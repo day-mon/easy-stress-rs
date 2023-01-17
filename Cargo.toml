@@ -1,0 +1,11 @@
+[package]
+name = "benchmark"
+version = "0.1.0"
+authors = ["Damon Montague Jr"]
+edition = "2021"
+
+[dependencies]
+requestty = "0.5.0"
+sysinfo = "0.27.6"
+colored = "2"
+ctrlc = { version = "3.0", features = ["termination"] }
