@@ -1,4 +1,3 @@
-use std::fmt::format;
 use std::io::{stdout, Write};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -17,27 +16,37 @@ pub fn watch_in_background(
     system: &mut System,
     start_time: Instant,
     running: Arc<AtomicBool>,
-) {
-    let one_second = Duration::new(1, 0);
-    loop {
+) -> (Option<f32>, String) {
+    let mut stop_reason = String::new();
+    let one_second = Duration::from_secs(1);
+    let mut iterations = 0;
+    let mut average_cpu_temp = 0f32;
+
+    while stop_reason.is_empty() {
         let temp = sensors::cpu_temp(system, true);
         if let Some(temp) = temp {
-            if temp > stop_temperature.unwrap() as f32 {
-                break;
+           average_cpu_temp += temp;
+            if let Some(stop_temp) = stop_temperature {
+                if temp > stop_temp as f32 {
+                    stop_reason.push_str("Temperature exceeded");
+                }
             }
         }
 
+
         if let Some(duration) = duration {
             if start_time.elapsed() > duration {
-                break;
+                stop_reason.push_str("Time up");
             }
         }
 
         print!("{}", prettify_output(duration, start_time, temp));
-        stdout().flush().unwrap();
+        stdout().flush().unwrap_or(());
+        iterations += 1;
         thread::sleep(one_second);
     }
     running.store(false, Ordering::SeqCst);
+    (Some(average_cpu_temp / (iterations as f32)), stop_reason)
 }
 
 fn prettify_output(
@@ -57,7 +66,7 @@ fn prettify_output(
                 time_left_second % 60
             )
         } else {
-            format!(" 🕛: {}s", time_left_second)
+            format!("🕛: {}s", time_left_second)
         };
         display_string.push_str(time_left.as_str());
     }

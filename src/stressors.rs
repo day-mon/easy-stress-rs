@@ -3,34 +3,36 @@ pub fn sqrt_cpu() {
 }
 
 pub fn factorial() {
-    let mut factorial = 1;
+    let mut _factorial = 1;
     for i in 1..=100 {
-        factorial *= i;
+        _factorial *= i;
     }
 }
 
+
 pub fn fibonacci() {
-    let mut a = 0;
+    let mut a: u64 = 0;
     let mut b = 1;
-    for _ in 0..100000 {
+    for _ in 0..50 {
         let c = a + b;
         a = b;
         b = c;
     }
 }
 
+
 pub fn float_add() {
-    let mut x = 0.0;
-    for _ in 0..1000000 {
-        x += 0.0000001;
+    let mut _x = 0.0;
+    for _ in 0..10 {
+        _x += 0.0000001;
     }
 }
 
 pub fn primes() {
-    let mut primes = 0;
+    let mut _primes = 0;
     for i in 2..100000 {
         if is_prime(i) {
-            primes += 1;
+            _primes += 1;
         }
     }
 }
@@ -72,9 +74,9 @@ let mut matrix = vec![vec![0.0; 100]; 100];
 }
 
 pub fn float_mul() {
-    let mut x = 1.0;
-    for _ in 0..1000000 {
-        x *= 1.0000001;
+    let mut _x = 1.0;
+    for _ in 0..10 {
+        _x *= 1.0000001;
     }
 }
 

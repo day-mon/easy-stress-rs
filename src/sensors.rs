@@ -1,4 +1,4 @@
-use sysinfo::{ComponentExt, CpuExt, System, SystemExt};
+use sysinfo::{ComponentExt, System, SystemExt};
 
 pub fn cpu_temp(
     system: &mut System,
