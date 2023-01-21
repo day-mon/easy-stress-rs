@@ -16,9 +16,9 @@ fn main() {
     let mut sys = System::new_all();
 
     // Display system information:s
-    println!("Hello {}!", sys.host_name().unwrap());
-    println!("OS: {} v{}", sys.long_os_version().unwrap(), sys.kernel_version().unwrap());
-    println!("CPU: {:?} cores {:?} threads", sys.physical_core_count().unwrap(),  sys.cpus().len());
+    println!("Hello {}!", sys.host_name().unwrap_or_else(|| "User".to_string()));
+    println!("OS: {} v{}", sys.long_os_version().unwrap_or_else(|| "N/A".to_string()), sys.kernel_version().unwrap_or_else(|| "N/A".to_string()));
+    println!("CPU: {:?} cores {:?} threads", sys.physical_core_count().unwrap_or(0),  sys.cpus().len());
     println!("Memory: {:?} GBs", sys.total_memory() / 1024 / 1024 / 1024);
 
     const CPU_QUESTION_INDEXES: [i32; 3] = [0, 3, 4];
@@ -34,7 +34,11 @@ fn main() {
                 .message("How many CPU(s) would you like to use?")
                 .choices((1..=sys.cpus().len()).map(|cpu| format!("{} CPU(s)", cpu)).collect::<Vec<String>>())
                 .when(|ans: &requestty::Answers| {
-                    let index_chosen = ans["main_question"].as_list_item().unwrap().index as i32;
+                    let index_chosen = ans.get("main_question")
+                        .expect("Main question was not found. This should not have happened")
+                        .as_list_item()
+                        .expect("Type of the Main question was not a ListItem.. This should not have happened!")
+                        .index as i32;
                     CPU_QUESTION_INDEXES.contains(&index_chosen)
                 })
                 .build(),
@@ -52,7 +56,12 @@ fn main() {
             Question::int("duration")
                 .message("How long would you like the test to be? (In Minutes)")
                 .when(|ans: &requestty::Answers| {
-                    ans["how_test"].as_list_items().unwrap().iter().any(|item| item.index == 0)
+                    ans.get("how_test")
+                        .expect("The 'How would you like to terminate question' could not be found. This should not have happened!")
+                        .as_list_items()
+                        .expect("Type of the 'How would you like to terminate' question has been changed. This should not have happened!")
+                        .iter()
+                        .any(|li| li.index == 0)
                 })
                 .default(1)
                 // lol why not
@@ -68,7 +77,12 @@ fn main() {
             Question::int("temperature")
                 .message("What temperature would you like to stop at? (In Celsius)")
                 .when(|ans: &requestty::Answers| {
-                    ans["how_test"].as_list_items().unwrap().iter().any(|item| item.text == *"Temperature")
+                    ans.get("how_test")
+                        .expect("The 'How would you like to terminate question' could not be found. This should not have happened!")
+                        .as_list_items()
+                        .expect("Type of the 'How would you like to terminate' question has been changed. This should not have happened!")
+                        .iter()
+                        .any(|li| li.text == *"Temperature")
                 })
                 .default(90)
                 .validate_on_key(|temp, _| temp > 0 && temp < 150)
@@ -96,21 +110,27 @@ fn main() {
             .expect("Couldnt get the answers. Something went terrible wrong.");
 
         let chosen_index = answers.get("main_question")
-            .and_then(|opt| opt.as_list_item())
+            .expect("Main question was not found. This should not have happened")
+            .as_list_item()
             .map(|list_item| list_item.index)
             .expect("Didnt get an option for the main question") as i32;
-        if CPU_QUESTION_INDEXES.contains(&chosen_index) {
-            let duration = answers.get("duration").and_then(|d| d.as_int()).map(|duration| Duration::from_secs(duration as u64 * 60));
-            let temperature = answers.get("temperature").and_then(|t| t.as_int());
+        if CPU_QUESTION_INDEXES.contains(&chosen_index)
+        {
+            let duration = answers.get("duration")
+                .and_then(|d| d.as_int())
+                .map(|duration| Duration::from_secs(duration as u64 * 60));
+            let temperature = answers.get("temperature")
+                .and_then(|t| t.as_int());
             let method = answers.get("method")
                 .and_then(|d| d.as_list_item())
                 .map(|method| STRESSORS[method.index])
                 .unwrap_or(STRESSORS[0])
                 .to_string();
             let cpus = answers.get("cpu_question")
-                .and_then(|item| item.as_list_item())
-                .map(|list_item| list_item.index + 1)
-                .expect("CPU Option was chosen and no cpu count was given. We gotta go bye bye.");
+                .expect("CPU Option was chosen and no cpu count was given. We gotta go bye bye.")
+                .as_list_item()
+                .expect("Type of 'How many CPU(s) question was changed'. This should not have happened")
+                .index + 1;
 
 
             let job = do_cpu_work(method, cpus, temperature, duration, &mut sys);
@@ -120,17 +140,21 @@ fn main() {
             } else {
                 eprintln!("{}", job.err().unwrap())
             }
-
-
-            let answer = Question::confirm("test_rerun")
-                .message("Would you like to run another test?")
-                .default(true)
-                .build();
-
-            if !requestty::prompt([answer]).unwrap().get("Would you like to run another test?").unwrap().as_bool().unwrap() {
-                break;
-            }
         }
+
+        let answer = Question::confirm("test_rerun")
+            .message("Would you like to run another test?")
+            .default(true)
+            .build();
+
+        let prompt = requestty::prompt([answer])
+            .expect("Couldnt get the answers. Something terrible went wrong.");
+        let rerun = prompt.get("test_rerun")
+            .expect("Couldnt get the rerun answer. Something terrible went wrong.")
+            .as_bool()
+            .expect("Couldnt get the rerun answer. Something terrible went wrong.");
+
+        if !rerun { break; }
     }
 }
 
@@ -139,15 +163,16 @@ fn get_termination_options(
 ) -> Vec<String> {
     let mut options = Vec::new();
     options.push("Time".to_string());
-    if sensors::cpu_temp(sys, false).is_some() {
+    if sensors::cpu_temp(sys, false).is_some()  {
         options.push("Temperature".to_string());
+
     }
     options.push("Until I say stop (Control+C)".to_string());
     options
 }
 
 fn get_stressor_functions(
-    stressor: String
+    stressor: &String
 ) -> fn() {
     match stressor.as_str() {
         "Fibonacci" => stressors::fibonacci,
@@ -163,7 +188,7 @@ fn get_stressor_functions(
 
 pub fn do_cpu_work(
     method: String,
-    thread_count: usize,
+    cpu_count: usize,
     stop_temperature: Option<i64>,
     duration: Option<Duration>,
     system: &mut System,
@@ -171,19 +196,22 @@ pub fn do_cpu_work(
     let start_time = Instant::now();
     let running = Arc::new(AtomicBool::new(true));
     let atomic_bool = running.clone();
-    let function = get_stressor_functions(method.clone());
+    let function = get_stressor_functions(&method);
 
     thread::scope(move |scope| {
-        let mut handles = Vec::with_capacity(thread_count);
-        for _ in 0..thread_count {
+        let mut handles = Vec::with_capacity(cpu_count);
+        for _ in 0..cpu_count
+        {
             let thread_running = running.clone();
-            let handle = scope.spawn(move || {
-                let mut iterations: u64 = 0;
-                while thread_running.load(Ordering::SeqCst) {
-                    function();
-                    iterations += 1;
-                }
-                iterations
+            let handle = scope.spawn(move ||
+                {
+                    let mut iterations: u64 = 0;
+                    while thread_running.load(Ordering::SeqCst)
+                    {
+                        function();
+                        iterations += 1;
+                    }
+                    iterations
             });
             handles.push(handle);
         }
@@ -206,13 +234,16 @@ pub fn do_cpu_work(
         }
 
 
-        Ok(Job {
-            name: method,
-            total_iterations,
-            thread_count,
-            stop_reasoning: stop_reason,
-            average_cpu_temp: temp
-        })
+        Ok(
+                Job {
+                name: method,
+                total_iterations,
+                cpu_count,
+                stop_reasoning: stop_reason,
+                average_cpu_temp: temp
+            }
+        )
+
     })
 }
 
@@ -220,17 +251,19 @@ pub fn do_cpu_work(
 pub struct Job {
     name: String,
     total_iterations: u64,
-    thread_count: usize,
+    cpu_count: usize,
     average_cpu_temp: Option<f32>,
     stop_reasoning: String
 }
 
 impl std::fmt::Display for Job {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "\n🔥 Job Name: {} \n🔥 Total Iterations: {} \n🔥 Thread Count: {} \n⛔️ Stop Reasoning: {} \n🌡️ Average CPU Temperature: {}\n",
-               self.name, pretty_print_int(self.total_iterations), self.thread_count, self.stop_reasoning, self.average_cpu_temp.unwrap())
-
-
+        let temp = match self.average_cpu_temp {
+            Some(temp) => format!("🌡️ Average CPU Temperature: {:.2}°C", temp),
+            None => String::new()
+        };
+        write!(f, "\n🔥 Job Name: {} \n🔥 Total Iterations: {} \n🔥 CPU Count: {} \n⛔️ Stop Reasoning: {} \n{}",
+               self.name, pretty_print_int(self.total_iterations), self.cpu_count, self.stop_reasoning, temp)
     }
 }
 
