@@ -55,14 +55,14 @@ fn is_prime(n: i32) -> bool {
 }
 
 pub fn matrix_multiplication() {
-let mut matrix = vec![vec![0.0; 100]; 100];
+let mut matrix = [[0.0; 100]; 100];
     for i in 0..100 {
         for j in 0..100 {
             matrix[i][j] = (i * j) as f32;
         }
     }
     for _ in 0..100 {
-        let mut result = vec![vec![0.0; 100]; 100];
+        let mut result = [[0.0; 100]; 100];
         for i in 0..100 {
             for j in 0..100 {
                 for k in 0..100 {

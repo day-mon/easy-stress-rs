@@ -2,8 +2,6 @@ pub mod stressors;
 pub mod sensors;
 mod reporting;
 
-
-use std::fmt::write;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
@@ -70,7 +68,7 @@ fn main() {
                     if time > 0 && time < i64::MAX {
                         Ok(())
                     } else {
-                        Err("Nope".to_string())
+                        Err("Time must be greater than 0 and less than the maximum value of an i64".into())
                     }
                 })
                 .build(),
@@ -124,8 +122,8 @@ fn main() {
             let method = answers.get("method")
                 .and_then(|d| d.as_list_item())
                 .map(|method| STRESSORS[method.index])
-                .unwrap_or(STRESSORS[0])
-                .to_string();
+                .unwrap_or(STRESSORS[0]);
+
             let cpus = answers.get("cpu_question")
                 .expect("CPU Option was chosen and no cpu count was given. We gotta go bye bye.")
                 .as_list_item()
@@ -133,13 +131,11 @@ fn main() {
                 .index + 1;
 
 
-            let job = do_cpu_work(method, cpus, temperature, duration, &mut sys);
-
-            if job.is_ok() {
-                println!("{}", job.unwrap())
-            } else {
-                eprintln!("{}", job.err().unwrap())
+            match do_cpu_work(method, cpus, temperature, duration, &mut sys) {
+                Ok(job) => println!("{}", job),
+                Err(e) => println!("{}", e),
             }
+
         }
 
         let answer = Question::confirm("test_rerun")
@@ -172,9 +168,9 @@ fn get_termination_options(
 }
 
 fn get_stressor_functions(
-    stressor: &String
+    stressor: &str
 ) -> fn() {
-    match stressor.as_str() {
+    match stressor {
         "Fibonacci" => stressors::fibonacci,
         "Primes" => stressors::primes,
         "Matrix Multiplication" => stressors::matrix_multiplication,
@@ -187,7 +183,7 @@ fn get_stressor_functions(
 
 
 pub fn do_cpu_work(
-    method: String,
+    method: &str,
     cpu_count: usize,
     stop_temperature: Option<i64>,
     duration: Option<Duration>,
@@ -195,8 +191,9 @@ pub fn do_cpu_work(
 )  -> Result<Job, String> {
     let start_time = Instant::now();
     let running = Arc::new(AtomicBool::new(true));
+
     let atomic_bool = running.clone();
-    let function = get_stressor_functions(&method);
+    let function = get_stressor_functions(method);
 
     thread::scope(move |scope| {
         let mut handles = Vec::with_capacity(cpu_count);
@@ -206,7 +203,7 @@ pub fn do_cpu_work(
             let handle = scope.spawn(move ||
                 {
                     let mut iterations: u64 = 0;
-                    while thread_running.load(Ordering::SeqCst)
+                    while thread_running.load(Ordering::Relaxed)
                     {
                         function();
                         iterations += 1;
@@ -216,7 +213,8 @@ pub fn do_cpu_work(
             handles.push(handle);
         }
 
-        let (temp, stop_reason) = watch_in_background(
+
+        let background_report = watch_in_background(
             stop_temperature,
             duration,
             system,
@@ -235,15 +233,16 @@ pub fn do_cpu_work(
 
 
         Ok(
-                Job {
-                name: method,
+            Job {
+                name: method.to_string(),
                 total_iterations,
                 cpu_count,
-                stop_reasoning: stop_reason,
-                average_cpu_temp: temp
+                stop_reasoning: background_report.stop_reason,
+                average_cpu_temp: background_report.average_cpu_temp,
+                min_cpu_temp: background_report.min_cpu_temp,
+                max_cpu_temp: background_report.max_cpu_temp,
             }
         )
-
     })
 }
 
@@ -253,17 +252,35 @@ pub struct Job {
     total_iterations: u64,
     cpu_count: usize,
     average_cpu_temp: Option<f32>,
+    min_cpu_temp: Option<f32>,
+    max_cpu_temp: Option<f32>,
     stop_reasoning: String
 }
 
 impl std::fmt::Display for Job {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let temp = match self.average_cpu_temp {
+        write!(f, "\n📊 {} Stress Test Results 📊", self.name)?;
+
+        let minimum_temp = match self.min_cpu_temp {
+            Some(temp) => format!("🌡️ Minimum CPU Temperature: {:.2}°C", temp),
+            None => String::new()
+        };
+
+        let maximum_temp = match self.max_cpu_temp {
+            Some(temp) => format!("🌡️ Max CPU Temperature: {:.2}°C", temp),
+            None => String::new()
+        };
+
+        let average_cpu = match self.average_cpu_temp {
             Some(temp) => format!("🌡️ Average CPU Temperature: {:.2}°C", temp),
             None => String::new()
         };
-        write!(f, "\n🔥 Job Name: {} \n🔥 Total Iterations: {} \n🔥 CPU Count: {} \n⛔️ Stop Reasoning: {} \n{}",
-               self.name, pretty_print_int(self.total_iterations), self.cpu_count, self.stop_reasoning, temp)
+
+
+
+
+        write!(f, "\n🔥 Job Name: {} \n🔥 Total Iterations: {} \n🔥 CPU Count: {} \n⛔️ Stop Reasoning: {} \n{} \n{} \n{}",
+               self.name, pretty_print_int(self.total_iterations), self.cpu_count, self.stop_reasoning, minimum_temp, maximum_temp, average_cpu)
     }
 }
 

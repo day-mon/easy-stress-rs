@@ -9,6 +9,12 @@ use crate::sensors;
 
 pub const CARRIAGE_RETURN: char = '\r';
 
+pub struct BackgroundReport {
+    pub average_cpu_temp: Option<f32>,
+    pub min_cpu_temp: Option<f32>,
+    pub max_cpu_temp: Option<f32>,
+    pub stop_reason: String
+}
 
 pub fn watch_in_background(
     stop_temperature: Option<i64>,
@@ -16,16 +22,31 @@ pub fn watch_in_background(
     system: &mut System,
     start_time: Instant,
     running: Arc<AtomicBool>,
-) -> (Option<f32>, String) {
-    let mut stop_reason = String::new();
+) -> BackgroundReport {
     let one_second = Duration::from_secs(1);
+
     let mut iterations = 0;
+    let mut stop_reason = String::new();
     let mut average_cpu_temp = 0f32;
+    let mut min_cpu_temp = 999.9f32;
+    let mut max_cpu_temp = 0f32;
+
 
     while stop_reason.is_empty() {
         let temp = sensors::cpu_temp(system, true);
         if let Some(temp) = temp {
-           average_cpu_temp += temp;
+
+            if temp > max_cpu_temp {
+                max_cpu_temp = temp;
+            }
+
+            if temp < min_cpu_temp {
+                min_cpu_temp = temp;
+            }
+
+            average_cpu_temp += temp;
+
+
             if let Some(stop_temp) = stop_temperature {
                 if temp > stop_temp as f32 {
                     stop_reason.push_str("Temperature exceeded");
@@ -45,8 +66,13 @@ pub fn watch_in_background(
         iterations += 1;
         thread::sleep(one_second);
     }
-    running.store(false, Ordering::SeqCst);
-    (Some(average_cpu_temp / (iterations as f32)), stop_reason)
+    running.store(false, Ordering::Relaxed);
+    BackgroundReport {
+        average_cpu_temp: Some(average_cpu_temp / iterations as f32),
+        min_cpu_temp: Some(min_cpu_temp),
+        max_cpu_temp: Some(max_cpu_temp),
+        stop_reason
+    }
 }
 
 fn prettify_output(
