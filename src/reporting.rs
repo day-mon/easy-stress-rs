@@ -1,7 +1,6 @@
 use std::io::{stdout, Write};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::thread;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 use colored::Colorize;
 use sysinfo::System;
@@ -13,7 +12,6 @@ pub struct BackgroundReport {
     pub average_cpu_temp: Option<f32>,
     pub min_cpu_temp: Option<f32>,
     pub max_cpu_temp: Option<f32>,
-    pub stop_reason: String
 }
 
 pub fn watch_in_background(
@@ -21,18 +19,19 @@ pub fn watch_in_background(
     duration: Option<Duration>,
     system: &mut System,
     start_time: Instant,
-    running: Arc<AtomicBool>,
+    running: Arc<AtomicUsize>,
 ) -> BackgroundReport {
-    let one_second = Duration::from_secs(1);
+
 
     let mut iterations = 0;
-    let mut stop_reason = String::new();
     let mut average_cpu_temp = 0f32;
     let mut min_cpu_temp = 999.9f32;
     let mut max_cpu_temp = 0f32;
 
 
-    while stop_reason.is_empty() {
+
+
+    while running.load(Ordering::Relaxed) == 0 {
         let temp = sensors::cpu_temp(system, true);
         if let Some(temp) = temp {
 
@@ -49,7 +48,7 @@ pub fn watch_in_background(
 
             if let Some(stop_temp) = stop_temperature {
                 if temp > stop_temp as f32 {
-                    stop_reason.push_str("Temperature exceeded");
+                    running.store(2, Ordering::Relaxed)
                 }
             }
         }
@@ -57,21 +56,20 @@ pub fn watch_in_background(
 
         if let Some(duration) = duration {
             if start_time.elapsed() > duration {
-                stop_reason.push_str("Time up");
+                running.store(1, Ordering::Relaxed)
             }
         }
 
         print!("{}", prettify_output(duration, start_time, temp));
-        stdout().flush().unwrap_or(());
+        stdout().flush().unwrap();
         iterations += 1;
-        thread::sleep(one_second);
+        // thread::sleep(one_second);
     }
-    running.store(false, Ordering::Relaxed);
+
     BackgroundReport {
         average_cpu_temp: Some(average_cpu_temp / iterations as f32),
         min_cpu_temp: Some(min_cpu_temp),
         max_cpu_temp: Some(max_cpu_temp),
-        stop_reason
     }
 }
 
@@ -83,20 +81,22 @@ fn prettify_output(
     let mut display_string = String::new();
     display_string.push(CARRIAGE_RETURN);
 
-    if let Some(duration) = duration {
-        let time_left_second = duration.as_secs() - start_time.elapsed().as_secs();
-        let time_left = if time_left_second > 60 {
-            format!(
-                "🕛: {}m {}s",
-                time_left_second / 60,
-                time_left_second % 60
-            )
-        } else {
-            format!("🕛: {}s", time_left_second)
-        };
-        display_string.push_str(time_left.as_str());
-    }
+    let time_left = match duration {
+        Some(duration) => duration.as_secs() - start_time.elapsed().as_secs(),
+        None => start_time.elapsed().as_secs(),
+    };
 
+    let time_string = if time_left > 60 {
+        format!(
+            "🕛: {}m {}s",
+            time_left / 60,
+            time_left % 60
+        )
+    } else {
+        format!("🕛: {}s", time_left)
+    };
+
+    display_string.push_str(time_string.as_str());
     display_string.push_str(" 🌡️: ");
 
     if let Some(temp) = stop_temperature {
@@ -110,6 +110,9 @@ fn prettify_output(
         display_string.push_str(temp_text.as_str());
     }
 
+    if display_string.matches("C").count() > 1 {
+        display_string =  display_string.replacen("C", "", 1)
+    }
     display_string
 
 }
