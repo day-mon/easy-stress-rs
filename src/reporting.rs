@@ -1,6 +1,6 @@
 use std::io::{stdout, Write};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 use colored::Colorize;
 use sysinfo::System;
@@ -21,14 +21,10 @@ pub fn watch_in_background(
     start_time: Instant,
     running: Arc<AtomicUsize>,
 ) -> BackgroundReport {
-
-
     let mut iterations = 0;
     let mut average_cpu_temp = 0f32;
     let mut min_cpu_temp = 999.9f32;
     let mut max_cpu_temp = 0f32;
-
-
 
 
     while running.load(Ordering::Relaxed) == 0 {
@@ -60,16 +56,15 @@ pub fn watch_in_background(
             }
         }
 
-        print!("{}", prettify_output(duration, start_time, temp));
+        print!("{} ", prettify_output(duration, start_time, temp));
         stdout().flush().unwrap();
         iterations += 1;
-        // thread::sleep(one_second);
     }
 
     BackgroundReport {
-        average_cpu_temp: Some(average_cpu_temp / iterations as f32),
-        min_cpu_temp: Some(min_cpu_temp),
-        max_cpu_temp: Some(max_cpu_temp),
+        average_cpu_temp: if average_cpu_temp == 0.0 { None } else { Some(average_cpu_temp / iterations as f32) },
+        min_cpu_temp: if min_cpu_temp == 999.9 { None } else { Some(min_cpu_temp) },
+        max_cpu_temp: if max_cpu_temp == 0.0  { None } else { Some(max_cpu_temp) },
     }
 }
 
@@ -110,9 +105,6 @@ fn prettify_output(
         display_string.push_str(temp_text.as_str());
     }
 
-    if display_string.matches("C").count() > 1 {
-        display_string =  display_string.replacen("C", "", 1)
-    }
     display_string
 
 }

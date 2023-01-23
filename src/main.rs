@@ -161,7 +161,6 @@ fn get_termination_options(
     options.push("Time".to_string());
     if sensors::cpu_temp(sys, false).is_some()  {
         options.push("Temperature".to_string());
-
     }
     options
 }
@@ -212,7 +211,7 @@ pub fn do_cpu_work(
                         iterations += 1;
                     }
                     iterations
-            });
+                });
             handles.push(handle);
         }
 
@@ -269,28 +268,25 @@ pub struct Job {
 
 impl std::fmt::Display for Job {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "\n📊 {} Stress Test Results 📊", self.name)?;
+        write!(f, "\n{} Stress Test Results ", self.name)?;
 
-        let minimum_temp = match self.min_cpu_temp {
-            Some(temp) => format!("🌡️ Minimum CPU Temperature: {:.2}°C", temp),
-            None => String::new()
-        };
+        write!(f, "\n⇁ Job Name: {} \n⇁ Total Iterations: {} \n⇁ CPU Count: {} \n⇁ Stop Reasoning: {}",
+               self.name, pretty_print_int(self.total_iterations), self.cpu_count, self.stop_reasoning)?;
 
-        let maximum_temp = match self.max_cpu_temp {
-            Some(temp) => format!("🌡️ Max CPU Temperature: {:.2}°C", temp),
-            None => String::new()
-        };
+        if let Some(max_temp) = self.max_cpu_temp {
+            write!(f, "\n⇁ Maximum CPU Temperature: {:.2}°C", max_temp)?;
+        }
 
-        let average_cpu = match self.average_cpu_temp {
-            Some(temp) => format!("🌡️ Average CPU Temperature: {:.2}°C", temp),
-            None => String::new()
-        };
+        if let Some(min_temp) = self.min_cpu_temp {
+            write!(f, "\n⇁ Max CPU Temperature: {:.2}°C", min_temp)?;
+        }
 
-
+        if let Some(average_temp) = self.average_cpu_temp {
+            write!(f, "\n⇁ Max CPU Temperature: {:.2}°C", average_temp)?;
+        }
 
 
-        write!(f, "\n🔥 Job Name: {} \n🔥 Total Iterations: {} \n🔥 CPU Count: {} \n⛔️ Stop Reasoning: {} \n{} \n{} \n{}",
-               self.name, pretty_print_int(self.total_iterations), self.cpu_count, self.stop_reasoning, minimum_temp, maximum_temp, average_cpu)
+        Ok(())
     }
 }
 
