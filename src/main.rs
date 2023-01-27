@@ -1,6 +1,7 @@
 pub mod stressors;
 pub mod sensors;
 mod reporting;
+mod components;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize};
@@ -8,20 +9,29 @@ use std::sync::atomic::Ordering::Relaxed;
 use std::thread;
 use std::time::{Duration, Instant};
 use colored::Colorize;
+use ocl::{Device, DeviceType, Platform};
 use requestty::{Question};
-use sysinfo::{System, SystemExt};
+use sysinfo::{CpuExt, System, SystemExt};
+// use crate::components::GreetingValues;
 use crate::reporting::watch_in_background;
+use crate::stressors::*;
 
 fn main() {
     let mut sys = System::new_all();
+    let mut gpu_ctx: Option<OpenCLContext> = None;
+    let mut gpu_device: Option<Device> = None;
+    // let system_information = GreetingValues::new(&sys);
 
-    // Display system information:s
-    println!("Hello {}!", sys.host_name().unwrap_or_else(|| "User".to_string()));
+
+    // // Display system information:s
+    // println!("Hello {}!", system_information.host_name);
+    // println!("Memory: {:?} GBs", system_information.memory);
+    // println!("CPU Information: {}", system_information.cpu_information);
+
     println!("OS: {} v{}", sys.long_os_version().unwrap_or_else(|| "N/A".to_string()), sys.kernel_version().unwrap_or_else(|| "N/A".to_string()));
-    println!("CPU: {:?} cores {:?} threads", sys.physical_core_count().unwrap_or(0),  sys.cpus().len());
-    println!("Memory: {:?} GBs", sys.total_memory() / 1024 / 1024 / 1024);
+    println!("Current CPU: {}", sys.cpus()[0].brand());
+    println!("CPU Information: {:?} cores & {:?} threads", sys.physical_core_count().unwrap_or(0),  sys.cpus().len());
 
-    const CPU_QUESTION_INDEXES: [i32; 3] = [0, 3, 4];
     const STRESSORS: [&str; 6] = ["Fibonacci", "Primes", "Matrix Multiplication", "Float Addition", "Float Multiplication", "Square Root"];
 
     loop {
@@ -30,16 +40,19 @@ fn main() {
                 .message("What would you like to test?")
                 .choices(["CPU", "GPU", "All (Separate)", "All (Together)"])
                 .build(),
+            Question::select("gpu_select")
+                .message("What GPU would you like to use")
+                .choices(get_gpu_options().into_iter().map(|i| i.name().unwrap()))
+                .build(),
             Question::select("cpu_question")
                 .message("How many CPU(s) would you like to use?")
-                .choices((1..=sys.cpus().len()).map(|cpu| format!("{} CPU(s)", cpu)).collect::<Vec<String>>())
+                .choices((1..=sys.cpus().len()).map(|cpu| format!("{cpu} CPU(s)")).collect::<Vec<String>>())
                 .when(|ans: &requestty::Answers| {
-                    let index_chosen = ans.get("main_question")
+                    ans.get("main_question")
                         .expect("Main question was not found. This should not have happened")
                         .as_list_item()
                         .expect("Type of the Main question was not a ListItem.. This should not have happened!")
-                        .index as i32;
-                    CPU_QUESTION_INDEXES.contains(&index_chosen)
+                        .index as i32 == 0
                 })
                 .build(),
             Question::multi_select("how_test")
@@ -114,29 +127,54 @@ fn main() {
             .as_list_item()
             .map(|list_item| list_item.index)
             .expect("Didnt get an option for the main question") as i32;
-        if CPU_QUESTION_INDEXES.contains(&chosen_index)
+
+        let duration = answers.get("duration")
+            .and_then(|d| d.as_int())
+            .map(|duration| Duration::from_secs(duration as u64 * 60));
+
+        let temperature = answers.get("temperature")
+            .and_then(|t| t.as_int());
+
+        let method = answers.get("method")
+            .and_then(|d| d.as_list_item())
+            .map(|method| STRESSORS[method.index])
+            .unwrap_or(STRESSORS[0]);
+
+        if chosen_index == 0
         {
-            let duration = answers.get("duration")
-                .and_then(|d| d.as_int())
-                .map(|duration| Duration::from_secs(duration as u64 * 60));
-            let temperature = answers.get("temperature")
-                .and_then(|t| t.as_int());
-            let method = answers.get("method")
-                .and_then(|d| d.as_list_item())
-                .map(|method| STRESSORS[method.index])
-                .unwrap_or(STRESSORS[0]);
-            let cpus = answers.get("cpu_question")
+            let cpus = &answers.get("cpu_question")
                 .expect("CPU Option was chosen and no cpu count was given. We gotta go bye bye.")
                 .as_list_item()
                 .expect("Type of 'How many CPU(s) question was changed'. This should not have happened")
                 .index + 1;
 
             match do_cpu_work(method, cpus, temperature, duration, &mut sys) {
-                Ok(job) => println!("{}", job),
-                Err(e) => println!("{}", e),
+                Ok(job) => println!("{job}"),
+                Err(e) => println!("{e}"),
             }
+        }
+        else if chosen_index == 1
+        {
+            println!("gpu here");
+            let gpu_name = &answers.get("gpu_select")
+                .expect("GPU Option was chosen and no gpu name was given. We gotta go bye bye.")
+                .as_list_item()
+                .expect("Type of 'Which GPU question was changed'. This should not have happened")
+                .index;
+
+
+            gpu_ctx = Some(OpenCLContext::new(Device::first(Platform::default()).unwrap()).unwrap());
+
+
+            let s = gpu_ctx.unwrap();
+            let g = get_opencl_program("float_add", &s).unwrap();
+
+            do_gpu_work(g)
 
         }
+
+
+
 
         let answer = Question::confirm("test_rerun")
             .message("Would you like to run another test?")
@@ -154,9 +192,7 @@ fn main() {
     }
 }
 
-fn get_termination_options(
-    sys: &mut System,
-) -> Vec<String> {
+fn get_termination_options(sys: &mut System) -> Vec<String> {
     let mut options = Vec::new();
     options.push("Time".to_string());
     if sensors::cpu_temp(sys, false).is_some()  {
@@ -169,18 +205,70 @@ fn get_stressor_functions(
     stressor: &str
 ) -> fn() {
     match stressor {
-        "Fibonacci" => stressors::fibonacci,
-        "Primes" => stressors::primes,
-        "Matrix Multiplication" => stressors::matrix_multiplication,
-        "Float Addition" => stressors::float_add,
-        "Float Multiplication" => stressors::float_mul,
-        "Square Root" => stressors::sqrt_cpu,
+        "Fibonacci" => fibonacci_cpu,
+        "Primes" => primes,
+        "Matrix Multiplication" => matrix_multiplication,
+        "Float Addition" => float_add,
+        "Float Multiplication" => float_mul,
+        "Square Root" => sqrt_cpu,
         _ => panic!("Invalid stressor function")
     }
 }
 
+pub fn get_opencl_program(
+    method: &str,
+    ctx: &OpenCLContext,
+) -> Result<OpenCLProgram, String> {
+    match method {
+                                                                                                                            //         // result vector
+        "sqrt" => {
+            // yeah, lets spam sqrt f32 on gpu
+            let sqrt_vector = [952_f32; 1000];
+            let result_vector = [0_f32; 1000];
+            OpenCLProgram::new(ctx, OPENCL_SQUARE_ROOT, "sqrt", &[sqrt_vector, result_vector])
+        },
+        "float_add" => {
+            let f_add_vector = [952.139_1_f32; 1000];
+            let result_vector = [0_f32; 1000];
+            OpenCLProgram::new(ctx, OPENCL_FLOAT_ADD, "float_add", &[f_add_vector, result_vector])
+        },
+        "matrix_mult" => {
+            let matrix_a = [201.139_13_f32; 1000];
+            let matrix_b = [952.139_1_f32; 1000];
+            let result_vector = [0_f32; 1000];
+            OpenCLProgram::new(ctx, OPENCL_MATRIX_MULTIPLICATION, "matrix_mult", &[matrix_a, matrix_b, result_vector])
+        },
+        // "fibonacci" => OpenCLProgram::new(ctx, OPENCL_FIBONACCI, "fibonacci"),
+        // "factorial" => OpenCLProgram::new(ctx, OPENCL_FACTORIAL, "factorial"),
+        // "primes" => OpenCLProgram::new(ctx, OPENCL_PRIMES, "primes"),
+        _ => {
+            println!("No method found, defaulting to sqrt");
+            let sqrt_vector = [952_f32; 1000];
+            let result_vector = [0_f32; 1000];
+            OpenCLProgram::new(ctx, OPENCL_SQUARE_ROOT, "sqrt", &[sqrt_vector, result_vector])
+        }
+    }
+}
 
-pub fn do_cpu_work(
+fn get_gpu_options() -> Vec<Device> {
+    let platform = Platform::default();
+    Device::list(platform, Some(DeviceType::GPU)).unwrap()
+}
+
+fn do_gpu_work(
+    program: OpenCLProgram,
+) {
+    loop {
+        program.run();
+    }
+
+
+
+
+}
+
+
+fn do_cpu_work(
     method: &str,
     cpu_count: usize,
     stop_temperature: Option<i64>,
@@ -193,8 +281,7 @@ pub fn do_cpu_work(
     let atomic_bool = running.clone();
     let function = get_stressor_functions(method);
 
-    let start_text = format!("🏁 Starting {}. If you wish to stop the test at any point hold Control+C", method).white().bold().to_string();
-    println!("{}", start_text);
+    println!("{}", format!("🏁 Starting {method}. If you wish to stop the test at any point hold Control+C").white().bold());
 
 
     thread::scope(move |scope| {
@@ -274,15 +361,15 @@ impl std::fmt::Display for Job {
                self.name, pretty_print_int(self.total_iterations), self.cpu_count, self.stop_reasoning)?;
 
         if let Some(max_temp) = self.max_cpu_temp {
-            write!(f, "\n⇁ Maximum CPU Temperature: {:.2}°C", max_temp)?;
+            write!(f, "\n⇁ Maximum CPU Temperature: {max_temp:.2}°C")?;
         }
 
         if let Some(min_temp) = self.min_cpu_temp {
-            write!(f, "\n⇁ Max CPU Temperature: {:.2}°C", min_temp)?;
+            write!(f, "\n⇁ Max CPU Temperature: {min_temp:.2}°C")?;
         }
 
         if let Some(average_temp) = self.average_cpu_temp {
-            write!(f, "\n⇁ Max CPU Temperature: {:.2}°C", average_temp)?;
+            write!(f, "\n⇁ Max CPU Temperature: {average_temp:.2}°C")?;
         }
 
 

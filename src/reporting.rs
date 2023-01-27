@@ -88,7 +88,7 @@ fn prettify_output(
             time_left % 60
         )
     } else {
-        format!("🕛: {}s", time_left)
+        format!("🕛: {time_left}s")
     };
 
     display_string.push_str(time_string.as_str());
@@ -96,11 +96,11 @@ fn prettify_output(
 
     if let Some(temp) = stop_temperature {
         let temp_text = if temp > 80.0 {
-            format!("{}°C", temp).red().to_string()
+            format!("{temp}°C").red().to_string()
         } else if temp > 60.0 {
-            format!("{}°C", temp).yellow().to_string()
+            format!("{temp}°C").yellow().to_string()
         } else {
-            format!("{}°C", temp).green().to_string()
+            format!("{temp}°C").green().to_string()
         };
         display_string.push_str(temp_text.as_str());
     }
