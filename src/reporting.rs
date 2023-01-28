@@ -28,7 +28,9 @@ pub fn watch_in_background(
 
 
     while running.load(Ordering::Relaxed) == 0 {
+
         let temp = sensors::cpu_temp(system, true);
+
         if let Some(temp) = temp {
 
             if temp > max_cpu_temp {
@@ -57,7 +59,7 @@ pub fn watch_in_background(
         }
 
         print!("{} ", prettify_output(duration, start_time, temp));
-        stdout().flush().unwrap();
+        let _ = stdout().flush();
         iterations += 1;
     }
 

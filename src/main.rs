@@ -11,25 +11,22 @@ use std::thread;
 use std::time::{Duration, Instant};
 use colored::Colorize;
 use ocl::{Device, DeviceType, Platform};
+use ocl::core::DeviceInfo;
 use requestty::{Question};
 use sysinfo::{System, SystemExt};
 use crate::components::GreetingValues;
-// use crate::components::GreetingValues;
 use crate::reporting::{prettify_output, watch_in_background};
 use crate::stressors::*;
 
 
 fn main() {
+    println!("Grabbing System Information...");
     let mut sys = System::new_all();
     let mut gpu_ctx: Option<OpenCLContext> = None;
-    let mut gpu_device: Option<Device> = None;
-
-    println!("Grabbing System Information...");
+    let gpu_device: Option<Device> = None;
 
     let system_information = GreetingValues::new(&sys);
     println!("{system_information}");
-
-
 
     loop {
         let questions = [
@@ -59,17 +56,32 @@ fn main() {
                         .index as i32 == 0
                 )
                 .build(),
-            Question::multi_select("how_test")
-                .message("How would you like the test to terminate? (Will terminate when any condition is met in this order)")
-                .choices(get_termination_options(&mut sys))
-                .validate(|ans, _ | {
-                    if ans.iter().filter(|&&a| a).count() < 1 {
-                        Err("You must choose at least one option.".into())
-                    } else {
-                        Ok(())
-                    }
-                })
-                .build(),
+        ];
+
+        let answers = requestty::prompt(questions)
+            .expect("Couldnt get the answers. Something went terrible wrong.");
+        let chosen_index = answers.get("main_question")
+            .expect("Main question was not found. This should not have happened")
+            .as_list_item()
+            .map(|list_item| list_item.index)
+            .expect("Didnt get an option for the main question");
+        let stressor_choices = get_stressors(&chosen_index);
+
+        let questions_part_two = [
+        Question::select("method")
+            .message("What method would you like to use?")
+            .choices(stressor_choices.iter().map(|item| item.to_string()))
+            .build(),
+         Question::multi_select("how_test")
+            .message("How would you like the test to terminate? (Will terminate when any condition is met in this order)")
+            .choices(get_termination_options(&mut sys, chosen_index))
+            .validate(|ans, _ | {
+                if ans.iter().filter(|&&a| a).count() < 1 {
+                    Err("You must choose at least one option.".into())
+                } else {
+                    Ok(())
+                }
+            }).build(),
             Question::int("duration")
                 .message("How long would you like the test to be? (In Minutes)")
                 .when(|ans: &requestty::Answers| {
@@ -105,49 +117,25 @@ fn main() {
                 .validate_on_key(|temp, _| temp > 0 && temp < 150)
                 .validate(|temp, _| {
                     let current_temp = sensors::cpu_temp(&mut sys, true);
-                    if (current_temp.is_some() && current_temp.unwrap() > temp as f32) || temp >= 150 {
-                        let error_message = if temp > 150 {
-                            format!("Temperature must be less than 150 degrees Celsius. Current temperature is {} degrees Celsius.", current_temp.unwrap())
-                        } else {
-                            format!("Temperature must be greater than the current temperature of {} degrees Celsius.", current_temp.unwrap())
-                        };
-                        Err(error_message)
-                    } else {
-                        Ok(())
+                    match (current_temp, temp) {
+                        (Some(current), 0..=150) => Err(format!("Temperature must be less than 150 degrees Celsius. Current temperature is {current} degrees Celsius.")),
+                        (Some(current), _) => Err(format!("Temperature must be greater than the current temperature of {current} degrees Celsius.")),
+                        (None, _) => Ok(())
                     }
-                })
-                .build(),
+                }).build(),
         ];
 
 
 
-
-        let answers = requestty::prompt(questions)
-            .expect("Couldnt get the answers. Something went terrible wrong.");
-
-        let chosen_index = answers.get("main_question")
-            .expect("Main question was not found. This should not have happened")
-            .as_list_item()
-            .map(|list_item| list_item.index)
-            .expect("Didnt get an option for the main question");
-
-        let stressor_choices = get_stressors(&chosen_index);
-        let method = Question::select("method")
-            .message("What method would you like to use?")
-            .choices(stressor_choices.iter().map(|item| item.to_string()))
-            .build();
-
-        let method_answer = requestty::prompt_one(method)
+        let answers_two = requestty::prompt(questions_part_two)
             .expect("Could not get method.. :(");
-
-        let duration = answers.get("duration")
+        let duration = answers_two.get("duration")
             .and_then(|d| d.as_int())
             .map(|duration| Duration::from_secs(duration as u64 * 60));
-
-        let temperature = answers.get("temperature")
+        let temperature = answers_two.get("temperature")
             .and_then(|t| t.as_int());
-
-        let method = method_answer.as_list_item()
+        let method = answers_two.get("method")
+            .and_then(|opt| opt.as_list_item())
             .map(|method| stressor_choices[method.index].clone())
             .unwrap_or(stressor_choices[0].clone());
 
@@ -166,41 +154,60 @@ fn main() {
         }
         else if chosen_index == 1
         {
-            let gpu_index = &answers.get("gpu_select")
+            let gpu_text = &answers.get("gpu_select")
                 .expect("GPU Option was chosen and no gpu name was given. We gotta go bye bye.")
                 .as_list_item()
                 .expect("Type of 'Which GPU question was changed'. This should not have happened")
-                .index;
+                .text;
 
 
-
-            // get opencl context if not initialized
-            if gpu_device.is_none() {
-                // this needs to be fixed plz fix i need to fix
-                let d = get_gpu_options();
-                gpu_device = Some(d[*gpu_index]);
-            }
+            let device = gpu_device.unwrap_or_else(|| {
+                let gpu_options = match get_gpu_options() {
+                    Ok(devices) => devices,
+                    Err(error) => panic!("Couldnt get gpu devices. Error: {error}")
+                };
+                let Some(gpu) = gpu_options.iter().find(|&gpu| {
+                    let g =  match gpu.info(DeviceInfo::Name) {
+                        Ok(name) => name,
+                        Err(_) => return false,
+                    }.to_string();
+                    g == *gpu_text
+                }) else {
+                    panic!("Couldnt find gpu device. Something went wrong.");
+                };
+                *gpu
+            });
 
             if gpu_ctx.is_none() {
-                let device = gpu_device.unwrap();
-
-                let ctx = OpenCLContext::new(device);
-                gpu_ctx = match ctx {
+                gpu_ctx = match OpenCLContext::new(device) {
                     Ok(ctx) => Some(ctx),
-                    Err(e) => {
-                        println!("Could not get GPU context. Something went wrong. Error: {e}");
+                    Err(error) => {
+                        println!("Could not get GPU context. Something went wrong. Error {error}");
                         None
-                    },
+                    }
                 }
+            }
+
+            // going to fix this later
+            let output = match &gpu_ctx {
+                Some(ctx) => {
+                    match get_opencl_program(&method, ctx) {
+                        Ok(program) => {
+                            match do_gpu_work(program, duration, method) {
+                                Ok(job) => format!("{job}"),
+                                Err(e) => e.to_string(),
+                            }
+                        },
+                        Err(err) => {
+                            err
+                        }
+                    }
+
+                },
+                None => "Could not get GPU context. Something went wrong.".to_string()
             };
 
-            match &gpu_ctx {
-                Some(ctx) => {
-                    let program = get_opencl_program(&method, ctx).unwrap();
-                    do_gpu_work(program, duration, method)
-                },
-                None => println!("Could not get GPU context. Something went wrong."),
-            }
+            println!("{output}");
         }
 
 
@@ -257,11 +264,11 @@ fn get_stressors(
     }
 }
 
-fn get_termination_options(sys: &mut System) -> Vec<String> {
+fn get_termination_options(sys: &mut System, chosen_index: usize) -> Vec<String> {
     let mut options = Vec::new();
     options.push("Time".to_string());
-    if sensors::cpu_temp(sys, false).is_some()  {
-        options.push("Temperature (doesnt work on gpu)".to_string());
+    if let (0, true) = (chosen_index, sensors::cpu_temp(sys, true).is_some()) {
+        options.push("Temperature".to_string())
     }
     options
 }
@@ -311,19 +318,23 @@ pub fn get_opencl_program(
     }
 }
 
-fn get_gpu_options() -> Vec<Device> {
+fn get_gpu_options() -> ocl::Result<Vec<Device>> {
     let platform = Platform::default();
-    Device::list(platform, Some(DeviceType::GPU)).unwrap()
+    Device::list(platform, Some(DeviceType::GPU))
 }
 
 fn do_gpu_work(
     program: OpenCLProgram,
     duration: Option<Duration>,
     method: Stressor,
-) {
-    // so because i believe the cpu is not the thing executing the code we shouldnt need another thread to watch the temperatures
+) -> Result<Job, String> {
     println!("{}", format!("🏁 Starting {method}. If you wish to stop the test at any point hold Control+C").white().bold());
     let start_time = Instant::now();
+    let mut iterations = 0;
+
+    program.run()
+        .map_err(|error| format!("Some error has occurred while trying to do a test run to see if {method} runs on your computer. Error: {error}"))?;
+
 
     loop {
         if let Some(duration) = duration {
@@ -332,12 +343,29 @@ fn do_gpu_work(
             }
         }
 
-        program.run();
+        // ignore error
+        program.run().unwrap_or_else(|_| {
+            println!("Error occurred while attempting to enqueue the kernel. If this continues to happen just Control+C")
+        });
+        iterations += 1;
 
         let output = prettify_output(duration, start_time, None);
         print!("{output}");
-        stdout().flush().unwrap();
+        let _ = stdout().flush();
     }
+
+    Ok(
+            Job {
+            name: method.to_string(),
+            total_iterations: iterations,
+            cpu_count: None,
+            average_cpu_temp: None,
+            min_cpu_temp: None,
+            max_cpu_temp: None,
+
+            stop_reasoning: "Time limit exceeded".to_string(),
+        }
+    )
 }
 
 
@@ -405,7 +433,7 @@ fn do_cpu_work(
             Job {
                 name: method.to_string(),
                 total_iterations,
-                cpu_count,
+                cpu_count: Some(cpu_count),
                 stop_reasoning: stop_reason,
                 average_cpu_temp: background_report.average_cpu_temp,
                 min_cpu_temp: background_report.min_cpu_temp,
@@ -419,7 +447,7 @@ fn do_cpu_work(
 pub struct Job {
     name: String,
     total_iterations: u64,
-    cpu_count: usize,
+    cpu_count: Option<usize>,
     average_cpu_temp: Option<f32>,
     min_cpu_temp: Option<f32>,
     max_cpu_temp: Option<f32>,
@@ -430,8 +458,12 @@ impl std::fmt::Display for Job {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "\n{} Stress Test Results ", self.name)?;
 
-        write!(f, "\n⇁ Job Name: {} \n⇁ Total Iterations: {} \n⇁ CPU Count: {} \n⇁ Stop Reasoning: {}",
-               self.name, pretty_print_int(self.total_iterations), self.cpu_count, self.stop_reasoning)?;
+        write!(f, "\n⇁ Job Name: {} \n⇁ Total Iterations: {} \n⇁ Stop Reasoning: {}",
+               self.name, pretty_print_int(self.total_iterations), self.stop_reasoning)?;
+
+        if let Some(cpus) = self.cpu_count {
+            write!(f, "\n⇁ CPU Count: {cpus}")?;
+        }
 
         if let Some(max_temp) = self.max_cpu_temp {
             write!(f, "\n⇁ Maximum CPU Temperature: {max_temp:.2}°C")?;

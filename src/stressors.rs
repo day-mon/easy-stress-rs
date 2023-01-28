@@ -15,12 +15,12 @@ pub enum Stressor {
 impl Display for Stressor {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Stressor::Fibonacci => write!(f, "Fibonacci"),
-            Stressor::Primes => write!(f, "Primes"),
-            Stressor::MatrixMultiplication => write!(f, "Matrix Multiplication"),
-            Stressor::FloatAddition => write!(f, "Float Addition"),
-            Stressor::FloatMultiplication => write!(f, "Float Multiplication"),
-            Stressor::SquareRoot => write!(f, "Square Root"),
+            Stressor::Fibonacci => f.write_str("Fibonacci"),
+            Stressor::Primes => f.write_str( "Primes"),
+            Stressor::MatrixMultiplication => f.write_str("Matrix Multiplication"),
+            Stressor::FloatAddition => f.write_str( "Float Addition"),
+            Stressor::FloatMultiplication => f.write_str("Float Multiplication"),
+            Stressor::SquareRoot => f.write_str("Square Root"),
         }
     }
 }
@@ -130,9 +130,9 @@ fn is_prime(n: i32) -> bool {
 
 pub fn matrix_multiplication() {
     let mut matrix = [[0.0; 100]; 100];
-    for i in 0..100 {
-        for j in 0..100 {
-            matrix[i][j] = (i * j) as f32;
+    for (i, row) in matrix.iter_mut().enumerate() {
+        for (j, col) in row.iter_mut().enumerate().take(100) {
+            *col = (i * j) as f32;
         }
     }
     for _ in 0..100 {
@@ -192,8 +192,8 @@ impl OpenCLProgram {
         let program = Program::builder()
             .src(source)
             .devices(context.device)
-            .build(&context.context).unwrap();
-        let wg_size = context.device.info(DeviceInfo::MaxWorkItemSizes).unwrap().to_string();
+            .build(&context.context)?;
+        let wg_size = context.device.info(DeviceInfo::MaxWorkItemSizes)?.to_string();
         let wg_size = wg_size.replace(['[', ']'], "");
         let wg_size: Vec<usize> = wg_size.split(',').map(|s| s.trim().parse().unwrap()).collect();
 
@@ -204,8 +204,7 @@ impl OpenCLProgram {
                 .queue(context.queue.clone())
                 .arg(None::<&Buffer<f32>>) // Placeholder for the first argument
                 .arg(None::<&Buffer<f32>>) // Placeholder for the second argument
-                .build()
-                .unwrap()
+                .build()?
         } else {
             Kernel::builder()
                 .name(kernel_name)
@@ -214,8 +213,7 @@ impl OpenCLProgram {
                 .arg(None::<&Buffer<f32>>) // Placeholder for the first argument
                 .arg(None::<&Buffer<f32>>) // Placeholder for the second argument
                 .arg(None::<&Buffer<f32>>) // Placeholder for the third argument
-                .build()
-                .unwrap()
+                .build()?
         };
 
         for (i, arg) in kernel_args.iter().enumerate()
@@ -235,10 +233,13 @@ impl OpenCLProgram {
         Ok(OpenCLProgram { program, kernel, wg_size })
     }
 
-    pub fn run(&self) {
+    pub fn run(&self) -> ocl::Result<()> {
         unsafe {
             // spawn the kernel on every compute unit
-            self.kernel.cmd().global_work_size((self.wg_size[0], self.wg_size[1], self.wg_size[2])).enq().unwrap()
+            self.kernel
+                .cmd()
+                .global_work_size((self.wg_size[0], self.wg_size[1], self.wg_size[2]))
+                .enq()
         }
     }
 }

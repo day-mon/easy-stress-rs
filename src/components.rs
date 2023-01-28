@@ -6,9 +6,11 @@ use sysinfo::{CpuExt, System, SystemExt};
 
 pub fn get_system_gpus() -> Vec<Device> {
     let platform = Platform::default();
-    let devices =  Device::list(platform, Some(DeviceType::GPU))
-        .unwrap();
-    devices
+     Device::list(platform, Some(DeviceType::GPU))
+        .unwrap_or_else(|_| {
+            println!("Something went during finding GPUs on your system or yo dont have any");
+            vec![]
+        })
 }
 
 
@@ -29,10 +31,11 @@ pub struct CPUInformation {
     pub physical_cores: usize,
 }
 
-#[derive(Default)]
+
+
 pub struct GPUInformation {
     pub name: String,
-    pub mem: Option<usize>
+    pub mem: Option<usize>,
 }
 
 impl CPUInformation {
@@ -59,7 +62,7 @@ impl GPUInformation {
 
         let mem = device.info(DeviceInfo::GlobalMemSize);
         if let Ok(mem) = mem {
-            let mem = mem.to_string().parse::<usize>().unwrap();
+            let mem = mem.to_string().parse::<usize>().unwrap_or(0);
             return Some(GPUInformation { name, mem: Some(mem) })
 
         }
@@ -113,7 +116,7 @@ impl GreetingValues {
         let os_long = system.long_os_version().unwrap_or_else(|| "N/A".to_string());
         let kernel_version = system.kernel_version();
         let os = if let Some(kernel_version) = kernel_version {
-            format!("{os_long} v{kernel_version}")
+            format!("{os_long}v{kernel_version}")
         } else {
             os_long
         };
