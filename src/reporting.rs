@@ -68,10 +68,10 @@ pub fn watch_in_background(
     }
 }
 
-fn prettify_output(
+pub fn prettify_output(
     duration: Option<Duration>,
     start_time: Instant,
-    stop_temperature: Option<f32>
+    current_temp: Option<f32>
 ) -> String {
     let mut display_string = String::new();
     display_string.push(CARRIAGE_RETURN);
@@ -92,9 +92,9 @@ fn prettify_output(
     };
 
     display_string.push_str(time_string.as_str());
-    display_string.push_str(" 🌡️: ");
 
-    if let Some(temp) = stop_temperature {
+    if let Some(temp) = current_temp {
+        display_string.push_str(" 🌡️: ");
         let temp_text = if temp > 80.0 {
             format!("{temp}°C").red().to_string()
         } else if temp > 60.0 {

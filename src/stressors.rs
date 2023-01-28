@@ -1,6 +1,7 @@
 use std::fmt::{Display, Formatter, write};
 use std::ops::Add;
-use ocl::{Platform, Device, Context, Queue, Program, Kernel, Buffer};
+use ocl::{Platform, Device, Context, Queue, Program, Kernel, Buffer, EventList};
+use ocl::core::DeviceInfo;
 
 #[derive(Clone)]
 pub enum Stressor {
@@ -28,10 +29,10 @@ impl Display for Stressor {
 pub const OPENCL_VECTOR_SIZE: usize = 10_000;
 
 pub const OPENCL_FLOAT_ADD: &str = r#"
-__kernel void float_add(__global float* a, __global float* b) {
-    int id = get_global_id(0);
-    b[id] = a[id] + 0.1391273;
-}
+    __kernel void float_add(__global float* a, __global float* b) {
+        int id = get_global_id(0);
+        b[id] = a[id] + 0.1391273;
+    }
 "#;
 
 pub const OPENCL_MATRIX_MULTIPLICATION: &str = r#"
@@ -183,7 +184,9 @@ impl OpenCLContext {
 pub struct OpenCLProgram {
     pub program: Program,
     pub kernel: Kernel,
+    pub wg_size: Vec<usize>,
 }
+
 
 impl OpenCLProgram {
     pub fn new(context: &OpenCLContext, source: &str, kernel_name: &str, kernel_args: &[[f32; OPENCL_VECTOR_SIZE]]) -> Result<Self, String> {
@@ -191,15 +194,33 @@ impl OpenCLProgram {
             .src(source)
             .devices(context.device)
             .build(&context.context).unwrap();
-        let kernel = Kernel::builder()
-            .name(kernel_name)
-            .program(&program)
-            .queue(context.queue.clone())
-            .arg(None::<&Buffer<f32>>) // Placeholder for the first argument
-            .arg(None::<&Buffer<f32>>) // Placeholder for the second argument
-            .build().unwrap();
+        let wg_size = context.device.info(DeviceInfo::MaxWorkItemSizes).unwrap().to_string();
+        let wg_size = wg_size.replace(['[', ']'], "");
+        let wg_size: Vec<usize> = wg_size.split(',').map(|s| s.trim().parse().unwrap()).collect();
 
-        for (i, arg) in kernel_args.iter().enumerate() {
+        let kernel = if kernel_args.len() == 2 {
+            Kernel::builder()
+                .name(kernel_name)
+                .program(&program)
+                .queue(context.queue.clone())
+                .arg(None::<&Buffer<f32>>) // Placeholder for the first argument
+                .arg(None::<&Buffer<f32>>) // Placeholder for the second argument
+                .build()
+                .unwrap()
+        } else {
+            Kernel::builder()
+                .name(kernel_name)
+                .program(&program)
+                .queue(context.queue.clone())
+                .arg(None::<&Buffer<f32>>) // Placeholder for the first argument
+                .arg(None::<&Buffer<f32>>) // Placeholder for the second argument
+                .arg(None::<&Buffer<f32>>) // Placeholder for the third argument
+                .build()
+                .unwrap()
+        };
+
+        for (i, arg) in kernel_args.iter().enumerate()
+        {
             let buffer = Buffer::<f32>::builder()
                 .queue(context.queue.clone())
                 .flags(ocl::flags::MEM_READ_WRITE)
@@ -209,20 +230,16 @@ impl OpenCLProgram {
             kernel.set_arg(i, buffer)?;
         }
 
-        // Set kernel arguments
 
 
-        Ok(OpenCLProgram { program, kernel })
+
+        Ok(OpenCLProgram { program, kernel, wg_size })
     }
 
     pub fn run(&self) {
         unsafe {
-            self.kernel.
-                cmd()
-                .global_work_size(OPENCL_VECTOR_SIZE)
-                .enq()
-                .unwrap()
-
+            // spawn the kernel on every compute unit
+            self.kernel.cmd().global_work_size((self.wg_size[0], self.wg_size[1], self.wg_size[2])).enq().unwrap()
         }
     }
 }

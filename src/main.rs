@@ -3,8 +3,9 @@ pub mod sensors;
 mod reporting;
 mod components;
 
+use std::io::{stdout, Write};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::atomic::Ordering::Relaxed;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -14,7 +15,7 @@ use ocl::core::DeviceInfo;
 use requestty::{Question};
 use sysinfo::{CpuExt, System, SystemExt};
 // use crate::components::GreetingValues;
-use crate::reporting::watch_in_background;
+use crate::reporting::{prettify_output, watch_in_background};
 use crate::stressors::*;
 
 
@@ -43,17 +44,24 @@ fn main() {
             Question::select("gpu_select")
                 .message("What GPU would you like to use")
                 .choices(get_gpu_options().into_iter().map(|i| i.name().unwrap()))
+                .when(|ans: &requestty::Answers|
+                    ans.get("main_question")
+                        .expect("Main question was not found. This should not have happened")
+                        .as_list_item()
+                        .expect("Type of the Main question was not a ListItem.. This should not have happened!")
+                        .index as i32 == 1
+                )
                 .build(),
             Question::select("cpu_question")
                 .message("How many CPU(s) would you like to use?")
                 .choices((1..=sys.cpus().len()).map(|cpu| format!("{cpu} CPU(s)")).collect::<Vec<String>>())
-                .when(|ans: &requestty::Answers| {
+                .when(|ans: &requestty::Answers|
                     ans.get("main_question")
                         .expect("Main question was not found. This should not have happened")
                         .as_list_item()
                         .expect("Type of the Main question was not a ListItem.. This should not have happened!")
                         .index as i32 == 0
-                })
+                )
                 .build(),
             Question::multi_select("how_test")
                 .message("How would you like the test to terminate? (Will terminate when any condition is met in this order)")
@@ -162,7 +170,6 @@ fn main() {
         }
         else if chosen_index == 1
         {
-            println!("gpu here");
             let gpu_index = &answers.get("gpu_select")
                 .expect("GPU Option was chosen and no gpu name was given. We gotta go bye bye.")
                 .as_list_item()
@@ -179,14 +186,21 @@ fn main() {
 
             if gpu_ctx.is_none() {
                 let device = gpu_device.unwrap();
-                gpu_ctx =  Some(OpenCLContext::new(device).unwrap())
 
+                let ctx = OpenCLContext::new(device);
+                gpu_ctx = match ctx {
+                    Ok(ctx) => Some(ctx),
+                    Err(e) => {
+                        println!("Could not get GPU context. Something went wrong. Error: {e}");
+                        None
+                    },
+                }
             };
 
             match &gpu_ctx {
                 Some(ctx) => {
                     let program = get_opencl_program(method, ctx).unwrap();
-                    do_gpu_work(program)
+                    do_gpu_work(program, duration)
                 },
                 None => println!("Could not get GPU context. Something went wrong."),
             }
@@ -262,8 +276,8 @@ pub fn get_opencl_program(
     method: Stressor,
     ctx: &OpenCLContext,
 ) -> Result<OpenCLProgram, String> {
+
     match method {
-                                                                                                                            //         // result vector
         Stressor::SquareRoot => {
             // yeah, lets spam sqrt 952 on gpu
             let sqrt_vector = [952_f32; OPENCL_VECTOR_SIZE];
@@ -279,7 +293,7 @@ pub fn get_opencl_program(
             let matrix_a = [201.139_13_f32; OPENCL_VECTOR_SIZE];
             let matrix_b = [952.139_1_f32; OPENCL_VECTOR_SIZE];
             let result_vector = [0_f32; OPENCL_VECTOR_SIZE];
-            OpenCLProgram::new(ctx, OPENCL_MATRIX_MULTIPLICATION, "matrix_mult", &[matrix_a, matrix_b, result_vector])
+            OpenCLProgram::new(ctx, OPENCL_MATRIX_MULTIPLICATION, "matrix_mult", &[matrix_a, matrix_b, result_vector] )
         },
         _ => {
             println!("No method found, defaulting to sqrt");
@@ -297,14 +311,26 @@ fn get_gpu_options() -> Vec<Device> {
 
 fn do_gpu_work(
     program: OpenCLProgram,
+    duration: Option<Duration>,
 ) {
+    // so because i believe the cpu is not the thing executing the code we shouldnt need another thread to watch the temperatures
+
+    let start_time = Instant::now();
+
     loop {
+        if let Some(duration) = duration {
+            if start_time.elapsed() > duration {
+                break;
+            }
+        }
+
+
         program.run();
+
+        let output = prettify_output(duration, start_time, None);
+        print!("{output}");
+        stdout().flush().unwrap();
     }
-
-
-
-
 }
 
 
