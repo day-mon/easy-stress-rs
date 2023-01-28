@@ -1,5 +1,31 @@
+use std::fmt::{Display, Formatter, write};
 use std::ops::Add;
 use ocl::{Platform, Device, Context, Queue, Program, Kernel, Buffer};
+
+#[derive(Clone)]
+pub enum Stressor {
+    Fibonacci,
+    Primes,
+    MatrixMultiplication,
+    FloatAddition,
+    FloatMultiplication,
+    SquareRoot
+}
+
+impl Display for Stressor {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Stressor::Fibonacci => write!(f, "Fibonacci"),
+            Stressor::Primes => write!(f, "Primes"),
+            Stressor::MatrixMultiplication => write!(f, "Matrix Multiplication"),
+            Stressor::FloatAddition => write!(f, "Float Addition"),
+            Stressor::FloatMultiplication => write!(f, "Float Multiplication"),
+            Stressor::SquareRoot => write!(f, "Square Root"),
+        }
+    }
+}
+
+pub const OPENCL_VECTOR_SIZE: usize = 10_000;
 
 pub const OPENCL_FLOAT_ADD: &str = r#"
 __kernel void float_add(__global float* a, __global float* b) {
@@ -128,7 +154,6 @@ pub fn float_mul() {
     }
 }
 
-
 pub struct OpenCLContext {
     pub platform: Platform,
     pub device: Device,
@@ -161,7 +186,7 @@ pub struct OpenCLProgram {
 }
 
 impl OpenCLProgram {
-    pub fn new(context: &OpenCLContext, source: &str, kernel_name: &str, kernel_args: &[[f32; 1000]]) -> Result<Self, String> {
+    pub fn new(context: &OpenCLContext, source: &str, kernel_name: &str, kernel_args: &[[f32; OPENCL_VECTOR_SIZE]]) -> Result<Self, String> {
         let program = Program::builder()
             .src(source)
             .devices(context.device)
@@ -179,7 +204,7 @@ impl OpenCLProgram {
                 .queue(context.queue.clone())
                 .flags(ocl::flags::MEM_READ_WRITE)
                 .copy_host_slice(arg)
-                .len(1000)
+                .len(OPENCL_VECTOR_SIZE)
                 .build()?;
             kernel.set_arg(i, buffer)?;
         }
@@ -194,8 +219,9 @@ impl OpenCLProgram {
         unsafe {
             self.kernel.
                 cmd()
-                .global_work_size(10000)
-                .enq().unwrap()
+                .global_work_size(OPENCL_VECTOR_SIZE)
+                .enq()
+                .unwrap()
 
         }
     }

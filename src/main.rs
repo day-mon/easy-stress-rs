@@ -10,11 +10,13 @@ use std::thread;
 use std::time::{Duration, Instant};
 use colored::Colorize;
 use ocl::{Device, DeviceType, Platform};
+use ocl::core::DeviceInfo;
 use requestty::{Question};
 use sysinfo::{CpuExt, System, SystemExt};
 // use crate::components::GreetingValues;
 use crate::reporting::watch_in_background;
 use crate::stressors::*;
+
 
 fn main() {
     let mut sys = System::new_all();
@@ -31,8 +33,6 @@ fn main() {
     println!("OS: {} v{}", sys.long_os_version().unwrap_or_else(|| "N/A".to_string()), sys.kernel_version().unwrap_or_else(|| "N/A".to_string()));
     println!("Current CPU: {}", sys.cpus()[0].brand());
     println!("CPU Information: {:?} cores & {:?} threads", sys.physical_core_count().unwrap_or(0),  sys.cpus().len());
-
-    const STRESSORS: [&str; 6] = ["Fibonacci", "Primes", "Matrix Multiplication", "Float Addition", "Float Multiplication", "Square Root"];
 
     loop {
         let questions = [
@@ -113,11 +113,10 @@ fn main() {
                     }
                 })
                 .build(),
-            Question::select("method")
-                .message("What method would you like to use?")
-                .choices(STRESSORS)
-                .build(),
         ];
+
+
+
 
         let answers = requestty::prompt(questions)
             .expect("Couldnt get the answers. Something went terrible wrong.");
@@ -126,7 +125,16 @@ fn main() {
             .expect("Main question was not found. This should not have happened")
             .as_list_item()
             .map(|list_item| list_item.index)
-            .expect("Didnt get an option for the main question") as i32;
+            .expect("Didnt get an option for the main question");
+
+        let stressor_choices = get_stressors(&chosen_index);
+        let method = Question::select("method")
+            .message("What method would you like to use?")
+            .choices(stressor_choices.iter().map(|item| item.to_string()))
+            .build();
+
+        let method_answer = requestty::prompt_one(method)
+            .expect("Could not get method.. :(");
 
         let duration = answers.get("duration")
             .and_then(|d| d.as_int())
@@ -135,10 +143,9 @@ fn main() {
         let temperature = answers.get("temperature")
             .and_then(|t| t.as_int());
 
-        let method = answers.get("method")
-            .and_then(|d| d.as_list_item())
-            .map(|method| STRESSORS[method.index])
-            .unwrap_or(STRESSORS[0]);
+        let method = method_answer.as_list_item()
+            .map(|method| stressor_choices[method.index].clone())
+            .unwrap_or(stressor_choices[0].clone());
 
         if chosen_index == 0
         {
@@ -156,21 +163,33 @@ fn main() {
         else if chosen_index == 1
         {
             println!("gpu here");
-            let gpu_name = &answers.get("gpu_select")
+            let gpu_index = &answers.get("gpu_select")
                 .expect("GPU Option was chosen and no gpu name was given. We gotta go bye bye.")
                 .as_list_item()
                 .expect("Type of 'Which GPU question was changed'. This should not have happened")
                 .index;
 
 
-            gpu_ctx = Some(OpenCLContext::new(Device::first(Platform::default()).unwrap()).unwrap());
 
+            // get opencl context if not initialized
+            if gpu_device.is_none() {
+                let d = get_gpu_options();
+                gpu_device = Some(d[*gpu_index]);
+            }
 
-            let s = gpu_ctx.unwrap();
-            let g = get_opencl_program("float_add", &s).unwrap();
+            if gpu_ctx.is_none() {
+                let device = gpu_device.unwrap();
+                gpu_ctx =  Some(OpenCLContext::new(device).unwrap())
 
-            do_gpu_work(g)
+            };
 
+            match &gpu_ctx {
+                Some(ctx) => {
+                    let program = get_opencl_program(method, ctx).unwrap();
+                    do_gpu_work(program)
+                },
+                None => println!("Could not get GPU context. Something went wrong."),
+            }
         }
 
 
@@ -192,6 +211,31 @@ fn main() {
     }
 }
 
+fn get_stressors(
+    index: &usize
+) -> Vec<Stressor> {
+
+    match index {
+        0 => {
+            let mut cpu_options = Vec::with_capacity(6);
+            cpu_options.extend_from_slice(
+                &[Stressor::Fibonacci, Stressor::FloatAddition, Stressor::FloatMultiplication, Stressor::MatrixMultiplication,
+                Stressor::SquareRoot, Stressor::Primes]
+            );
+            cpu_options
+
+        },
+        1 => {
+            let mut gpu_options = Vec::with_capacity(3);
+            gpu_options.extend_from_slice(
+                &[Stressor::SquareRoot, Stressor::MatrixMultiplication, Stressor::FloatAddition]
+            );
+            gpu_options
+        }
+        _ => panic!("Invalid stressor")
+    }
+}
+
 fn get_termination_options(sys: &mut System) -> Vec<String> {
     let mut options = Vec::new();
     options.push("Time".to_string());
@@ -202,49 +246,45 @@ fn get_termination_options(sys: &mut System) -> Vec<String> {
 }
 
 fn get_stressor_functions(
-    stressor: &str
+    stressor: &Stressor
 ) -> fn() {
     match stressor {
-        "Fibonacci" => fibonacci_cpu,
-        "Primes" => primes,
-        "Matrix Multiplication" => matrix_multiplication,
-        "Float Addition" => float_add,
-        "Float Multiplication" => float_mul,
-        "Square Root" => sqrt_cpu,
-        _ => panic!("Invalid stressor function")
+        Stressor::Fibonacci => fibonacci_cpu,
+        Stressor::Primes => primes,
+        Stressor::MatrixMultiplication => matrix_multiplication,
+        Stressor::FloatAddition => float_add,
+        Stressor::FloatMultiplication => float_mul,
+        Stressor::SquareRoot => sqrt_cpu,
     }
 }
 
 pub fn get_opencl_program(
-    method: &str,
+    method: Stressor,
     ctx: &OpenCLContext,
 ) -> Result<OpenCLProgram, String> {
     match method {
                                                                                                                             //         // result vector
-        "sqrt" => {
-            // yeah, lets spam sqrt f32 on gpu
-            let sqrt_vector = [952_f32; 1000];
-            let result_vector = [0_f32; 1000];
+        Stressor::SquareRoot => {
+            // yeah, lets spam sqrt 952 on gpu
+            let sqrt_vector = [952_f32; OPENCL_VECTOR_SIZE];
+            let result_vector = [0_f32; OPENCL_VECTOR_SIZE];
             OpenCLProgram::new(ctx, OPENCL_SQUARE_ROOT, "sqrt", &[sqrt_vector, result_vector])
         },
-        "float_add" => {
-            let f_add_vector = [952.139_1_f32; 1000];
-            let result_vector = [0_f32; 1000];
+        Stressor::FloatAddition  => {
+            let f_add_vector = [952.139_1_f32; OPENCL_VECTOR_SIZE];
+            let result_vector = [0_f32; OPENCL_VECTOR_SIZE];
             OpenCLProgram::new(ctx, OPENCL_FLOAT_ADD, "float_add", &[f_add_vector, result_vector])
         },
-        "matrix_mult" => {
-            let matrix_a = [201.139_13_f32; 1000];
-            let matrix_b = [952.139_1_f32; 1000];
-            let result_vector = [0_f32; 1000];
+        Stressor::MatrixMultiplication => {
+            let matrix_a = [201.139_13_f32; OPENCL_VECTOR_SIZE];
+            let matrix_b = [952.139_1_f32; OPENCL_VECTOR_SIZE];
+            let result_vector = [0_f32; OPENCL_VECTOR_SIZE];
             OpenCLProgram::new(ctx, OPENCL_MATRIX_MULTIPLICATION, "matrix_mult", &[matrix_a, matrix_b, result_vector])
         },
-        // "fibonacci" => OpenCLProgram::new(ctx, OPENCL_FIBONACCI, "fibonacci"),
-        // "factorial" => OpenCLProgram::new(ctx, OPENCL_FACTORIAL, "factorial"),
-        // "primes" => OpenCLProgram::new(ctx, OPENCL_PRIMES, "primes"),
         _ => {
             println!("No method found, defaulting to sqrt");
-            let sqrt_vector = [952_f32; 1000];
-            let result_vector = [0_f32; 1000];
+            let sqrt_vector = [952_f32; OPENCL_VECTOR_SIZE];
+            let result_vector = [0_f32; OPENCL_VECTOR_SIZE];
             OpenCLProgram::new(ctx, OPENCL_SQUARE_ROOT, "sqrt", &[sqrt_vector, result_vector])
         }
     }
@@ -269,7 +309,7 @@ fn do_gpu_work(
 
 
 fn do_cpu_work(
-    method: &str,
+    method: Stressor,
     cpu_count: usize,
     stop_temperature: Option<i64>,
     duration: Option<Duration>,
@@ -279,7 +319,7 @@ fn do_cpu_work(
     let running = Arc::new(AtomicUsize::new(0));
 
     let atomic_bool = running.clone();
-    let function = get_stressor_functions(method);
+    let function = get_stressor_functions(&method);
 
     println!("{}", format!("🏁 Starting {method}. If you wish to stop the test at any point hold Control+C").white().bold());
 
