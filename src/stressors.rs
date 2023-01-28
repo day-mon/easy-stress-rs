@@ -1,6 +1,5 @@
-use std::fmt::{Display, Formatter, write};
-use std::ops::Add;
-use ocl::{Platform, Device, Context, Queue, Program, Kernel, Buffer, EventList};
+use std::fmt::{Display, Formatter};
+use ocl::{Platform, Device, Context, Queue, Program, Kernel, Buffer};
 use ocl::core::DeviceInfo;
 
 #[derive(Clone)]

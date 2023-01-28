@@ -5,15 +5,15 @@ mod components;
 
 use std::io::{stdout, Write};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize};
 use std::sync::atomic::Ordering::Relaxed;
 use std::thread;
 use std::time::{Duration, Instant};
 use colored::Colorize;
 use ocl::{Device, DeviceType, Platform};
-use ocl::core::DeviceInfo;
 use requestty::{Question};
-use sysinfo::{CpuExt, System, SystemExt};
+use sysinfo::{System, SystemExt};
+use crate::components::GreetingValues;
 // use crate::components::GreetingValues;
 use crate::reporting::{prettify_output, watch_in_background};
 use crate::stressors::*;
@@ -23,27 +23,23 @@ fn main() {
     let mut sys = System::new_all();
     let mut gpu_ctx: Option<OpenCLContext> = None;
     let mut gpu_device: Option<Device> = None;
-    // let system_information = GreetingValues::new(&sys);
+
+    println!("Grabbing System Information...");
+
+    let system_information = GreetingValues::new(&sys);
+    println!("{system_information}");
 
 
-    // // Display system information:s
-    // println!("Hello {}!", system_information.host_name);
-    // println!("Memory: {:?} GBs", system_information.memory);
-    // println!("CPU Information: {}", system_information.cpu_information);
-
-    println!("OS: {} v{}", sys.long_os_version().unwrap_or_else(|| "N/A".to_string()), sys.kernel_version().unwrap_or_else(|| "N/A".to_string()));
-    println!("Current CPU: {}", sys.cpus()[0].brand());
-    println!("CPU Information: {:?} cores & {:?} threads", sys.physical_core_count().unwrap_or(0),  sys.cpus().len());
 
     loop {
         let questions = [
             Question::select("main_question")
                 .message("What would you like to test?")
-                .choices(["CPU", "GPU", "All (Separate)", "All (Together)"])
+                .choices(get_stressed_components(&system_information))
                 .build(),
             Question::select("gpu_select")
                 .message("What GPU would you like to use")
-                .choices(get_gpu_options().into_iter().map(|i| i.name().unwrap()))
+                .choices(system_information.gpu_information.iter().map(|item| item.name.clone()).collect::<Vec<String>>())
                 .when(|ans: &requestty::Answers|
                     ans.get("main_question")
                         .expect("Main question was not found. This should not have happened")
@@ -180,6 +176,7 @@ fn main() {
 
             // get opencl context if not initialized
             if gpu_device.is_none() {
+                // this needs to be fixed plz fix i need to fix
                 let d = get_gpu_options();
                 gpu_device = Some(d[*gpu_index]);
             }
@@ -199,8 +196,8 @@ fn main() {
 
             match &gpu_ctx {
                 Some(ctx) => {
-                    let program = get_opencl_program(method, ctx).unwrap();
-                    do_gpu_work(program, duration)
+                    let program = get_opencl_program(&method, ctx).unwrap();
+                    do_gpu_work(program, duration, method)
                 },
                 None => println!("Could not get GPU context. Something went wrong."),
             }
@@ -223,6 +220,16 @@ fn main() {
 
         if !rerun { break; }
     }
+}
+
+fn get_stressed_components(sys_info: &GreetingValues) -> Vec<String> {
+    let mut ans: Vec<String> = Vec::with_capacity(2);
+    ans.push("CPU".to_string());
+    if !sys_info.gpu_information.is_empty() {
+        ans.push("GPU".to_string())
+    }
+    ans
+
 }
 
 fn get_stressors(
@@ -254,7 +261,7 @@ fn get_termination_options(sys: &mut System) -> Vec<String> {
     let mut options = Vec::new();
     options.push("Time".to_string());
     if sensors::cpu_temp(sys, false).is_some()  {
-        options.push("Temperature".to_string());
+        options.push("Temperature (doesnt work on gpu)".to_string());
     }
     options
 }
@@ -273,7 +280,7 @@ fn get_stressor_functions(
 }
 
 pub fn get_opencl_program(
-    method: Stressor,
+    method: &Stressor,
     ctx: &OpenCLContext,
 ) -> Result<OpenCLProgram, String> {
 
@@ -312,9 +319,10 @@ fn get_gpu_options() -> Vec<Device> {
 fn do_gpu_work(
     program: OpenCLProgram,
     duration: Option<Duration>,
+    method: Stressor,
 ) {
     // so because i believe the cpu is not the thing executing the code we shouldnt need another thread to watch the temperatures
-
+    println!("{}", format!("🏁 Starting {method}. If you wish to stop the test at any point hold Control+C").white().bold());
     let start_time = Instant::now();
 
     loop {
@@ -323,7 +331,6 @@ fn do_gpu_work(
                 break;
             }
         }
-
 
         program.run();
 
