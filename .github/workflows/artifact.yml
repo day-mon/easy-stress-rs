@@ -2,8 +2,17 @@ name: Publish Artifacts
 
 on:
   push:
-    branches: [ master, ci ]
-    paths-ignore: [ '*.md' ]
+    branches: [ main, ci ]
+    paths:
+      - '**.rs'
+      - '**.toml'
+      - '.github/workflows/artifact.yml'
+  pull_request:
+    paths:
+      - '**.rs'
+      - '**.toml'
+      - '.github/workflows/artifact.yml'
+    branches: [ main ]
 
 jobs:
   linux:
