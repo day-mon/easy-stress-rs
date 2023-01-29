@@ -1,5 +1,5 @@
 [package]
-name = "benchmark"
+name = "easy-stress-rs"
 version = "0.1.0"
 authors = ["Damon Montague Jr"]
 edition = "2021"

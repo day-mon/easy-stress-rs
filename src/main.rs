@@ -242,7 +242,6 @@ fn get_stressed_components(sys_info: &GreetingValues) -> Vec<String> {
 fn get_stressors(
     index: &usize
 ) -> Vec<Stressor> {
-
     match index {
         0 => {
             let mut cpu_options = Vec::with_capacity(6);
@@ -290,7 +289,6 @@ pub fn get_opencl_program(
     method: &Stressor,
     ctx: &OpenCLContext,
 ) -> Result<OpenCLProgram, String> {
-
     match method {
         Stressor::SquareRoot => {
             // yeah, lets spam sqrt 952 on gpu

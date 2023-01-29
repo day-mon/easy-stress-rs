@@ -116,7 +116,7 @@ impl GreetingValues {
         let os_long = system.long_os_version().unwrap_or_else(|| "N/A".to_string());
         let kernel_version = system.kernel_version();
         let os = if let Some(kernel_version) = kernel_version {
-            format!("{os_long}v{kernel_version}")
+            format!("{os_long} v{kernel_version}")
         } else {
             os_long
         };
