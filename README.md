@@ -1,6 +1,6 @@
 # Easy Stress
 ![Supported Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-blue)
-
+#### This is a WIP!!
 This is a command line tool that allows you to stress test your CPU & GPU.
 
 ## Why?
