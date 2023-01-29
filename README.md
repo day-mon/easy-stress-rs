@@ -1,5 +1,5 @@
 # Easy Stress
-![Supported Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-blue)
+![Supported Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-blue) | [![Publish Artifacts](https://github.com/day-mon/easy-stress-rs/actions/workflows/artifact.yml/badge.svg?branch=main)](https://github.com/day-mon/easy-stress-rs/actions/workflows/artifact.yml)
 #### This is a WIP!!
 This is a command line tool that allows you to stress test your CPU & GPU.
 
