@@ -1,0 +1,100 @@
+name: Publish Artifacts
+
+on:
+  push:
+    branches: [ main, ci ]
+    paths:
+      - '**.rs'
+      - '**.toml'
+      - '.github/workflows/artifact.yml'
+  pull_request:
+    paths:
+      - '**.rs'
+      - '**.toml'
+      - '.github/workflows/artifact.yml'
+    branches: [ main ]
+
+jobs:
+  linux:
+    name: Artifact Linux (x64)
+    runs-on: ubuntu-20.04
+    container:
+      image: ubuntu:16.04
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+      - name: Install Essentials
+        run: |
+          apt-get update
+          apt-get upgrade
+          apt-get install -y ocl-icd-opencl-dev
+          apt-get install -y curl gcc
+      - name: Install Rust Toolchain
+        uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af #@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - name: Build Artifact
+        run: cargo build -r
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: Linux x64
+          path: target/release/easy-stress-rs
+  windows:
+    name: Artifact Windows (x64)
+    runs-on: windows-2019
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+      - name: Install OpenCL library
+        shell: pwsh
+        run: |
+          powershell -Command "Invoke-WebRequest -Uri 'https://upload.montague.im/u/OpenCL.lib' -OutFile OpenCL.lib"
+          mkdir target/release/deps
+          move OpenCL.lib target/release/deps
+      - name: Install Rust Toolchain
+        uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af #@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - name: Build Artifact
+        run: cargo build -r
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: Windows x64
+          path: target/release/easy-stress-rs.exe
+  macos:
+    name: Artifact macOS (Universal)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+      - name: Install Rust Toolchain
+        uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af #@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+          target: x86_64-apple-darwin
+      - name: Install OpenCL framework
+        run: |
+          brew install opencl-headers
+          brew install ocl-icd
+      - name: Build Artifact (x64)
+        run: cargo build -r --target=x86_64-apple-darwin
+      - name: Build Artifact (M1)
+        run: |
+          rustup target add aarch64-apple-darwin
+          cargo build -r --target=aarch64-apple-darwin
+      - name: Combine Universal Darwin
+        run:
+          lipo -create -output universal-easy-stress-rs target/**/release/easy-stress-rs
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: macOS universal
+          path: universal-easy-stress-rs
