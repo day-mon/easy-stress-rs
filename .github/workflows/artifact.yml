@@ -39,6 +39,11 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
+      - name: Install OpenCL runtime
+        shell: pwsh
+        run: |
+          powershell -Command "Invoke-WebRequest -Uri 'https://example.com/opencl-runtime-win.exe' -OutFile opencl-runtime-win.exe"
+          powershell -Command "./opencl-runtime-win.exe /quiet"
       - name: Install Rust Toolchain
         uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af #@v1
         with:
@@ -67,6 +72,10 @@ jobs:
           target: x86_64-apple-darwin
       - name: Build Artifact (x64)
         run: cargo build -r --target=x86_64-apple-darwin
+      - name: Install OpenCL framework
+        run: |
+          brew install opencl-headers
+          brew install ocl-icd
       - name: Build Artifact (M1)
         run: |
           rustup target add aarch64-apple-darwin
