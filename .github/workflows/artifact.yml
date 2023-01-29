@@ -82,7 +82,7 @@ jobs:
           cargo build -r --target=aarch64-apple-darwin
       - name: Combine Universal Darwin
         run:
-          lipo -create -output universal-easy-stress-rs target/**/release/strumbot
+          lipo -create -output universal-easy-stress-rs target/**/release/easy-stress-rs
       - name: Upload Artifact
         uses: actions/upload-artifact@v3
         with:
