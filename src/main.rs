@@ -292,26 +292,26 @@ pub fn get_opencl_program(
     match method {
         Stressor::SquareRoot => {
             // yeah, lets spam sqrt 952 on gpu
-            let sqrt_vector = [952_f32; OPENCL_VECTOR_SIZE];
-            let result_vector = [0_f32; OPENCL_VECTOR_SIZE];
-            OpenCLProgram::new(ctx, OPENCL_SQUARE_ROOT, "sqrt", &[sqrt_vector, result_vector])
+            let sqrt_vector = vec![952_f32; OPENCL_VECTOR_SIZE];
+            let result_vector = vec![0_f32; OPENCL_VECTOR_SIZE];
+            OpenCLProgram::new(ctx, OPENCL_SQUARE_ROOT, "sqrt", vec![sqrt_vector, result_vector])
         },
         Stressor::FloatAddition  => {
-            let f_add_vector = [952.139_1_f32; OPENCL_VECTOR_SIZE];
-            let result_vector = [0_f32; OPENCL_VECTOR_SIZE];
-            OpenCLProgram::new(ctx, OPENCL_FLOAT_ADD, "float_add", &[f_add_vector, result_vector])
+            let f_add_vector = vec![952.139_1_f32; OPENCL_VECTOR_SIZE];
+            let result_vector = vec![0_f32; OPENCL_VECTOR_SIZE];
+            OpenCLProgram::new(ctx, OPENCL_FLOAT_ADD, "float_add", vec![f_add_vector, result_vector])
         },
         Stressor::MatrixMultiplication => {
-            let matrix_a = [201.139_13_f32; OPENCL_VECTOR_SIZE];
-            let matrix_b = [952.139_1_f32; OPENCL_VECTOR_SIZE];
-            let result_vector = [0_f32; OPENCL_VECTOR_SIZE];
-            OpenCLProgram::new(ctx, OPENCL_MATRIX_MULTIPLICATION, "matrix_mult", &[matrix_a, matrix_b, result_vector] )
+            let matrix_a = vec![201.139_13_f32; OPENCL_VECTOR_SIZE];
+            let matrix_b = vec![952.139_1_f32; OPENCL_VECTOR_SIZE];
+            let result_vector = vec![0_f32; OPENCL_VECTOR_SIZE];
+            OpenCLProgram::new(ctx, OPENCL_MATRIX_MULTIPLICATION, "matrix_mult", vec![matrix_a, matrix_b, result_vector] )
         },
         _ => {
             println!("No method found, defaulting to sqrt");
-            let sqrt_vector = [952_f32; OPENCL_VECTOR_SIZE];
-            let result_vector = [0_f32; OPENCL_VECTOR_SIZE];
-            OpenCLProgram::new(ctx, OPENCL_SQUARE_ROOT, "sqrt", &[sqrt_vector, result_vector])
+            let sqrt_vector = vec![952_f32; OPENCL_VECTOR_SIZE];
+            let result_vector = vec![0_f32; OPENCL_VECTOR_SIZE];
+            OpenCLProgram::new(ctx, OPENCL_SQUARE_ROOT, "sqrt", vec![sqrt_vector, result_vector])
         }
     }
 }

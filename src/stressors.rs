@@ -188,7 +188,7 @@ pub struct OpenCLProgram {
 
 
 impl OpenCLProgram {
-    pub fn new(context: &OpenCLContext, source: &str, kernel_name: &str, kernel_args: &[[f32; OPENCL_VECTOR_SIZE]]) -> Result<Self, String> {
+    pub fn new(context: &OpenCLContext, source: &str, kernel_name: &str, kernel_args: Vec<Vec<f32>>) -> Result<Self, String> {
         let program = Program::builder()
             .src(source)
             .devices(context.device)
