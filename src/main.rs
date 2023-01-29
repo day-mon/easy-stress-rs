@@ -118,7 +118,13 @@ fn main() {
                 .validate(|temp, _| {
                     let current_temp = sensors::cpu_temp(&mut sys, true);
                     match (current_temp, temp) {
-                        (Some(current), 0..=150) => Err(format!("Temperature must be less than 150 degrees Celsius. Current temperature is {current} degrees Celsius.")),
+                        (Some(current), 0..=150) => {
+                            if current > temp as f32 {
+                                Err(format!("Temperature must be greater than the current temperature of {current} degrees Celsius."))
+                            } else {
+                                Ok(())
+                            }
+                        },
                         (Some(current), _) => Err(format!("Temperature must be greater than the current temperature of {current} degrees Celsius.")),
                         (None, _) => Ok(())
                     }
@@ -340,11 +346,17 @@ fn do_gpu_work(
                 break;
             }
         }
+        let mut iter_failed = false;
 
-        // ignore error
         program.run().unwrap_or_else(|_| {
-            println!("Error occurred while attempting to enqueue the kernel. If this continues to happen just Control+C")
+            println!("Error occurred while attempting to enqueue the kernel. If this continues to happen just Control+C");
+            iter_failed = true;
         });
+
+        if iter_failed {
+            continue;
+        }
+
         iterations += 1;
 
         let output = prettify_output(duration, start_time, None);
