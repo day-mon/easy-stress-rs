@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use colored::Colorize;
 use ocl::{Device, DeviceType, Platform};
 use ocl::core::DeviceInfo;
-use requestty::{Question};
+use requestty::{prompt_one, Question};
 use sysinfo::{System, SystemExt};
 use crate::components::GreetingValues;
 use crate::reporting::{prettify_output, watch_in_background};
@@ -20,12 +20,40 @@ use crate::stressors::*;
 
 
 fn main() {
+    let mut platforms = Platform::list();
+    platforms.push(Platform::default());
+
+    let platform = if platforms.is_empty() {
+        println!("No platforms found. TODO TELL USERS WHAT TO DO ON DIFFERENT OS AND DIFFERENT GPU VENDORS");
+        None
+    } else if platforms.len() == 1 {
+        let platform = platforms[0];
+        let name = platform.name().unwrap();
+        // println!("One platform found.. Selecting {name} as your GPU Platform");
+        Some(platform)
+    } else {
+        let local_platforms = platforms.iter().map(|platform| {
+            let name = platform.name().unwrap();
+            // at this time this function call never returns error, so i am not going to even try to handle it out of annoyance
+            let devices = Device::list(platform, Some(DeviceType::GPU)).unwrap_or(vec![]);
+            let names = devices.iter().map(|devices| devices.name().unwrap()).collect::<Vec<String>>().join(", ");
+            format!("Name: {name} | Devices: {names}")
+        }).collect::<Vec<String>>();
+        let question = Question::select("gpu_platform")
+            .message("Which GPU Platform would you like to use")
+            .choices(local_platforms);
+        let answer = prompt_one(question);
+        let platform_index = answer.unwrap().as_list_item().unwrap().index;
+       Some(platforms[platform_index])
+    };
+
+
     println!("Grabbing System Information...");
     let mut sys = System::new_all();
     let mut gpu_ctx: Option<OpenCLContext> = None;
     let gpu_device: Option<Device> = None;
 
-    let system_information = GreetingValues::new(&sys);
+    let system_information = GreetingValues::new(&sys, platform);
     println!("{system_information}");
 
     loop {
