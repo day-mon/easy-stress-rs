@@ -1,6 +1,6 @@
 use std::fmt::{Display, Formatter};
 use ocl::{Platform, Device, Context, Queue, Program, Kernel, Buffer};
-use ocl::core::DeviceInfo;
+use ocl::core::{DeviceInfo, DeviceInfoResult};
 
 #[derive(Clone)]
 pub enum Stressor {
@@ -68,9 +68,6 @@ __kernel void primes(__global int* a, __global int* b) {
     b[id] = a[id] * a[id + 1];
 }
 "#;
-
-
-
 
 pub fn sqrt_cpu() {
     let _ = (952.0_f32).sqrt();
@@ -169,12 +166,14 @@ impl OpenCLContext {
             .devices(device)
             .build()?;
         let queue = Queue::new(&context, device, None)?;
-        Ok(OpenCLContext {
-            platform,
-            device,
-            context,
-            queue,
-        })
+        Ok(
+            OpenCLContext {
+                platform,
+                device,
+                context,
+                queue,
+            }
+        )
     }
 }
 
@@ -193,9 +192,12 @@ impl OpenCLProgram {
             .src(source)
             .devices(context.device)
             .build(&context.context)?;
-        let wg_size = context.device.info(DeviceInfo::MaxWorkItemSizes)?.to_string();
-        let wg_size = wg_size.replace(['[', ']'], "");
-        let wg_size: Vec<usize> = wg_size.split(',').map(|s| s.trim().parse().unwrap()).collect();
+
+        let wg_size = match context.device.info(DeviceInfo::MaxWorkItemSizes) {
+            Ok(DeviceInfoResult::MaxWorkItemSizes(sizes)) => sizes,
+            _ => return Err("Failed to get max work group size".to_string()),
+        };
+
 
         let kernel = if kernel_args.len() == 2 {
             Kernel::builder()
@@ -226,16 +228,11 @@ impl OpenCLProgram {
                 .build()?;
             kernel.set_arg(i, buffer)?;
         }
-
-
-
-
         Ok(OpenCLProgram { program, kernel, wg_size })
     }
 
     pub fn run(&self) -> ocl::Result<()> {
         unsafe {
-            // spawn the kernel on every compute unit
             self.kernel
                 .cmd()
                 .global_work_size((self.wg_size[0], self.wg_size[1], self.wg_size[2]))

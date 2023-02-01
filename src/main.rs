@@ -20,24 +20,36 @@ use crate::stressors::*;
 
 
 fn main() {
-    let mut platforms = Platform::list();
-    platforms.push(Platform::default());
+    let platforms = Platform::list();
 
     let platform = if platforms.is_empty() {
-        println!("No platforms found. TODO TELL USERS WHAT TO DO ON DIFFERENT OS AND DIFFERENT GPU VENDORS");
+        println!(r#"No OpenCL platforms found. This is probably because you dont have a GPU or you dont have GPU compatible drivers installed.
+If you have a GPU and the drivers are installed, please report this issue to the developers.
+
+Intel GPUs:
+ - https://www.intel.com/content/www/us/en/search.html
+AMD GPUs:
+ - https://www.amd.com/en/support
+Nvidia GPUs:
+ - https://www.nvidia.com/Download/index.aspx?lang=en-us
+
+You can report this issue here: https://github.com/day-mon/easy-stress-rs
+"#);
         None
     } else if platforms.len() == 1 {
-        let platform = platforms[0];
-        let name = platform.name().unwrap();
-        // println!("One platform found.. Selecting {name} as your GPU Platform");
-        Some(platform)
+        Some(platforms[0])
     } else {
-        let local_platforms = platforms.iter().map(|platform| {
-            let name = platform.name().unwrap();
+        let local_platforms = platforms.iter().filter_map(|platform| {
+            let name = platform.name()
+                .ok()?;
             // at this time this function call never returns error, so i am not going to even try to handle it out of annoyance
-            let devices = Device::list(platform, Some(DeviceType::GPU)).unwrap_or(vec![]);
-            let names = devices.iter().map(|devices| devices.name().unwrap()).collect::<Vec<String>>().join(", ");
-            format!("Name: {name} | Devices: {names}")
+            let devices = Device::list(platform, Some(DeviceType::GPU))
+                .unwrap_or(vec![]);
+            let names = devices.iter()
+                .filter_map(|devices| devices.name().ok())
+                .collect::<Vec<String>>()
+                .join(", ");
+            Some(format!("Name: {name} | Devices: {names}"))
         }).collect::<Vec<String>>();
         let question = Question::select("gpu_platform")
             .message("Which GPU Platform would you like to use")
@@ -280,8 +292,10 @@ fn get_stressors(
         0 => {
             let mut cpu_options = Vec::with_capacity(6);
             cpu_options.extend_from_slice(
-                &[Stressor::Fibonacci, Stressor::FloatAddition, Stressor::FloatMultiplication, Stressor::MatrixMultiplication,
-                Stressor::SquareRoot, Stressor::Primes]
+                 &[
+                        Stressor::Fibonacci, Stressor::FloatAddition, Stressor::FloatMultiplication,
+                        Stressor::MatrixMultiplication, Stressor::SquareRoot, Stressor::Primes
+                       ]
             );
             cpu_options
 
