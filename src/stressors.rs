@@ -1,29 +1,19 @@
-use std::fmt::{Display, Formatter};
 use ocl::{Platform, Device, Context, Queue, Program, Kernel, Buffer};
 use ocl::core::{DeviceInfo, DeviceInfoResult};
+use strum::Display;
 
-#[derive(Clone)]
+#[derive(Clone, Display)]
 pub enum Stressor {
     Fibonacci,
     Primes,
     MatrixMultiplication,
     FloatAddition,
     FloatMultiplication,
-    SquareRoot
+    FloatDivision,
+    SquareRoot,
+    InverseSquareRoot
 }
 
-impl Display for Stressor {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Stressor::Fibonacci => f.write_str("Fibonacci"),
-            Stressor::Primes => f.write_str( "Primes"),
-            Stressor::MatrixMultiplication => f.write_str("Matrix Multiplication"),
-            Stressor::FloatAddition => f.write_str( "Float Addition"),
-            Stressor::FloatMultiplication => f.write_str("Float Multiplication"),
-            Stressor::SquareRoot => f.write_str("Square Root"),
-        }
-    }
-}
 
 pub const OPENCL_VECTOR_SIZE: usize = 10_000;
 
@@ -68,15 +58,25 @@ __kernel void primes(__global int* a, __global int* b) {
     b[id] = a[id] * a[id + 1];
 }
 "#;
-
-pub fn sqrt_cpu() {
-    let _ = (952.0_f32).sqrt();
+pub fn sqrt_cpu(num: f64)  {
+    // use asm to prevent compiler from optimizing out the loop
+    // use a f64 for loop
+    for _ in 0..10_000_000 {
+        std::hint::black_box(num.sqrt());
+    }
 }
 
-pub fn factorial_cpu() {
-    let mut _factorial = 1;
-    for i in 1..=100 {
-        _factorial *= i;
+pub fn invsqrt(mut x: f32)  {
+    for _ in 0..10_000_000 {
+        unsafe {
+            std::arch::asm!("rsqrtss {x}, {x}", x = inout(xmm_reg) x);
+        }
+    }
+}
+pub fn factorial_cpu(amount: u128) {
+    let mut _result = 1_u128;
+    for i in 1..amount {
+        _result = std::hint::black_box(_result * i);
     }
 }
 
@@ -84,18 +84,18 @@ pub fn factorial_cpu() {
 pub fn fibonacci_cpu() {
     let mut a: u64 = 0;
     let mut b = 1;
-    for _ in 0..50 {
-        let c = a + b;
-        a = b;
-        b = c;
+    for _ in 0..10_000_000 {
+        let c = std::hint::black_box(a + b);
+        a = std::hint::black_box(b);
+        b = std::hint::black_box(c);
     }
 }
 
 
 pub fn float_add() {
     let mut _x = 0.0;
-    for _ in 0..10 {
-        _x += 0.0000001;
+    for _ in 0..10_000_000 {
+        _x  = std::hint::black_box(_x + 0.139127123343);
     }
 }
 
@@ -145,11 +145,19 @@ pub fn matrix_multiplication() {
 }
 
 pub fn float_mul() {
-    let mut _x = 1.0;
-    for _ in 0..10 {
-        _x *= 1.0000001;
+    let mut _x = 0.0;
+    for _ in 0..10_000_000 {
+        _x  = std::hint::black_box(_x * 0.139127123343);
     }
 }
+
+pub fn float_division() {
+    let mut _x = f64::MAX;
+    for _ in 0..10_000_000 {
+        _x  = std::hint::black_box(_x / 2.139127123343);
+    }
+}
+
 
 pub struct OpenCLContext {
     pub platform: Platform,

@@ -76,8 +76,6 @@ impl GPUInformation {
 
         Some(GPUInformation { name, mem: None })
     }
-
-
 }
 
 impl Display for CPUInformation {
@@ -117,6 +115,7 @@ impl Display for GreetingValues {
     }
 }
 
+
 impl GreetingValues {
     pub fn new(system: &System, platform: Option<Platform>) -> Self {
         let host_name = system.host_name().unwrap_or("User".to_string());
@@ -132,9 +131,16 @@ impl GreetingValues {
         let gpu_information = get_system_gpus(platform)
             .iter()
             .flatten()
-            .map(|device| GPUInformation::new(device))
-            .flatten()
+            .filter_map(GPUInformation::new)
             .collect::<Vec<GPUInformation>>();
         GreetingValues { host_name, os, memory, cpu_information, gpu_information }
+    }
+
+    pub fn get_gpus_str(&self) -> Vec<&str> {
+        self.gpu_information.iter().map(|item| item.name.as_str()).collect::<Vec<&str>>()
+    }
+
+    pub fn get_cpus_str(&self) -> Vec<usize> {
+        (1..=self.cpu_information.logical_cores).collect::<Vec<usize>>()
     }
 }

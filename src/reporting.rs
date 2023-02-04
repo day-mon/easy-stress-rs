@@ -15,7 +15,7 @@ pub struct BackgroundReport {
 }
 
 pub fn watch_in_background(
-    stop_temperature: Option<i64>,
+    stop_temperature: Option<u8>,
     duration: Option<Duration>,
     system: &mut System,
     start_time: Instant,
