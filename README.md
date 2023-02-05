@@ -17,18 +17,19 @@ So I decided to create my own tool.
 
 ## Dependencies
 - Rust
-- OpenCL Library
+- OpenCL Library (should be in your graphics drivers)
     - Windows:
-      - Nvidia: [Nvidia OpenCL SDK](https://developer.nvidia.com/cuda-downloads)
-      - AMD
-        - [Headers and OpenCL.lib](https://github.com/GPUOpen-LibrariesAndSDKs/OCL-SDK/releases)
-        - [Samples](https://github.com/OpenCL/AMD_APP_samples)
-      - Intel: [Intel OpenCL SDK](https://software.intel.com/content/www/us/en/develop/tools/opencl-sdk.html)
+      - Intel GPUs:
+        - https://www.intel.com/content/www/us/en/search.html
+      - AMD GPUs:
+        - https://www.amd.com/en/support
+      - Nvidia GPUs:
+        - https://www.nvidia.com/Download/index.aspx?lang=en-us
     - Linux:
-        - Debian/Ubuntu: `sudo apt install ocl-icd-opencl-dev`
-        - Arch: `sudo pacman -S ocl-icd` or `yay/paru -S opencl-nvidia 525.85.05-1`
-        - Fedora: `sudo dnf install ocl-icd-devel`
-    - MacOS: From my testing on my M1 Mac, the OpenCL library is already installed. If you are using an Intel Mac I dont know and I am going to attempt to figure it out.
+       - Debian/Ubuntu: `sudo apt install ocl-icd-opencl-dev`
+       - Arch: `sudo pacman -S ocl-icd` or `yay/paru -S opencl-nvidia 525.85.05-1`
+       - Fedora: `sudo dnf install ocl-icd-devel`
+     - MacOS: From my testing on my M1 Mac, the OpenCL library is already installed. If you are using an Intel Mac I dont know and I am going to attempt to figure it out.
 
 ## Usage
 #### Install from package managers coming soon!
@@ -48,7 +49,8 @@ cd target/release
 
 ### Known Issues
 - Sometimes the tool will not compile on Windows because it fails to find the OpenCL library because x86_64-pc-windows-msvc uses .lib and not .dlls. To fix this open your finder and look for OpenCL.lib. Then copy it to the target/release/deps folder, then attempt to recompile.
-
+- On M1 Macbooks the tool will recognize the GPU but will not be able to stress test it. I am working on a fix for this.
+- On some GPUs the tool will not be able to stress test them. I am working on a fix for this. 
 
 ### Note
 - The tool has been tested on Windows and Linux and should also work on macOS.

@@ -4,13 +4,20 @@ use ocl::{Device, DeviceType, Platform};
 use ocl::core::DeviceInfo;
 use sysinfo::{CpuExt, System, SystemExt};
 
-pub fn get_system_gpus() -> Vec<Device> {
-    let platform = Platform::default();
-     Device::list(platform, Some(DeviceType::GPU))
-        .unwrap_or_else(|_| {
-            println!("Something went during finding GPUs on your system or yo dont have any");
-            vec![]
-        })
+pub fn get_system_gpus(platform: Option<Platform>) -> Option<Vec<Device>> {
+
+    match platform {
+        Some(plat) => {
+            Device::list(plat, Some(DeviceType::GPU))
+                .map_or_else(|_| {
+                    println!("Something went during finding GPUs on your system or you dont have any");
+                    None
+                }, |devices| {
+                    Some(devices)
+                })
+        },
+        None => None
+    }
 }
 
 
@@ -69,8 +76,6 @@ impl GPUInformation {
 
         Some(GPUInformation { name, mem: None })
     }
-
-
 }
 
 impl Display for CPUInformation {
@@ -110,8 +115,9 @@ impl Display for GreetingValues {
     }
 }
 
+
 impl GreetingValues {
-    pub fn new(system: &System) -> Self {
+    pub fn new(system: &System, platform: Option<Platform>) -> Self {
         let host_name = system.host_name().unwrap_or("User".to_string());
         let os_long = system.long_os_version().unwrap_or_else(|| "N/A".to_string());
         let kernel_version = system.kernel_version();
@@ -122,7 +128,19 @@ impl GreetingValues {
         };
         let memory = system.total_memory();
         let cpu_information = CPUInformation::new(system);
-        let gpu_information = get_system_gpus().iter().filter_map(GPUInformation::new).collect();
+        let gpu_information = get_system_gpus(platform)
+            .iter()
+            .flatten()
+            .filter_map(GPUInformation::new)
+            .collect::<Vec<GPUInformation>>();
         GreetingValues { host_name, os, memory, cpu_information, gpu_information }
+    }
+
+    pub fn get_gpus_str(&self) -> Vec<&str> {
+        self.gpu_information.iter().map(|item| item.name.as_str()).collect::<Vec<&str>>()
+    }
+
+    pub fn get_cpus_str(&self) -> Vec<usize> {
+        (1..=self.cpu_information.logical_cores).collect::<Vec<usize>>()
     }
 }

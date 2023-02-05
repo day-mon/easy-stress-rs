@@ -1,293 +1,207 @@
+extern crate core;
+
 pub mod stressors;
 pub mod sensors;
 mod reporting;
 mod components;
+mod prompt;
 
 use std::io::{stdout, Write};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize};
 use std::sync::atomic::Ordering::Relaxed;
-use std::thread;
+use std::{panic, thread};
+use std::any::Any;
 use std::time::{Duration, Instant};
 use colored::Colorize;
+use inquire::{Confirm, CustomType, MultiSelect, Select};
+use inquire::error::InquireResult;
+
 use ocl::{Device, DeviceType, Platform};
 use ocl::core::DeviceInfo;
-use requestty::{Question};
 use sysinfo::{System, SystemExt};
 use crate::components::GreetingValues;
 use crate::reporting::{prettify_output, watch_in_background};
-use crate::stressors::*;
+use crate::stressors::{OPENCL_FLOAT_ADD, OPENCL_MATRIX_MULTIPLICATION, OPENCL_SQUARE_ROOT, OPENCL_VECTOR_SIZE, OpenCLContext, OpenCLProgram, Stressor};
+
+const NO_OPENCL_STRING: &str = r#"No OpenCL platforms found. This is probably because you dont have a GPU or you dont have GPU compatible drivers installed.
+If you have a GPU and the drivers are installed, please report this issue to the developers.
+
+Intel GPUs:
+ - https://www.intel.com/content/www/us/en/search.html
+AMD GPUs:
+ - https://www.amd.com/en/support
+Nvidia GPUs:
+ - https://www.nvidia.com/Download/index.aspx?lang=en-us
+
+You can report this issue here: https://github.com/day-mon/easy-stress-rs"#;
 
 
-fn main() {
-    println!("Grabbing System Information...");
+
+fn main() -> InquireResult<()> {
+    println!("Looking for GPU Platforms...");
+    let platforms = setup();
+
+    let platform = match platforms {
+        Ok(platforms) => obtain_platform(platforms),
+        Err(_) => {
+            println!("{NO_OPENCL_STRING}");
+            None
+        }
+    };
+
+    println!("\rGrabbing System Information...");
     let mut sys = System::new_all();
     let mut gpu_ctx: Option<OpenCLContext> = None;
     let gpu_device: Option<Device> = None;
 
-    let system_information = GreetingValues::new(&sys);
+    let system_information = GreetingValues::new(&sys, platform);
     println!("{system_information}");
 
     loop {
-        let questions = [
-            Question::select("main_question")
-                .message("What would you like to test?")
-                .choices(get_stressed_components(&system_information))
-                .build(),
-            Question::select("gpu_select")
-                .message("What GPU would you like to use")
-                .choices(system_information.gpu_information.iter().map(|item| item.name.clone()).collect::<Vec<String>>())
-                .when(|ans: &requestty::Answers|
-                    ans.get("main_question")
-                        .expect("Main question was not found. This should not have happened")
-                        .as_list_item()
-                        .expect("Type of the Main question was not a ListItem.. This should not have happened!")
-                        .index as i32 == 1
-                )
-                .build(),
-            Question::select("cpu_question")
-                .message("How many CPU(s) would you like to use?")
-                .choices((1..=sys.cpus().len()).map(|cpu| format!("{cpu} CPU(s)")).collect::<Vec<String>>())
-                .when(|ans: &requestty::Answers|
-                    ans.get("main_question")
-                        .expect("Main question was not found. This should not have happened")
-                        .as_list_item()
-                        .expect("Type of the Main question was not a ListItem.. This should not have happened!")
-                        .index as i32 == 0
-                )
-                .build(),
-        ];
+        let main_question= Select::new("What would you like to stress?", get_stressed_components(&system_information))
+            .prompt()?;
 
-        let answers = requestty::prompt(questions)
-            .expect("Couldnt get the answers. Something went terrible wrong.");
-        let chosen_index = answers.get("main_question")
-            .expect("Main question was not found. This should not have happened")
-            .as_list_item()
-            .map(|list_item| list_item.index)
-            .expect("Didnt get an option for the main question");
-        let stressor_choices = get_stressors(&chosen_index);
+        let gpu_question = match main_question {
+            "GPU" => Select::new("What GPU would you like to use", system_information.get_gpus_str())
+                .prompt()
+                .ok(),
+            _ => None
+        };
 
-        let questions_part_two = [
-        Question::select("method")
-            .message("What method would you like to use?")
-            .choices(stressor_choices.iter().map(|item| item.to_string()))
-            .build(),
-         Question::multi_select("how_test")
-            .message("How would you like the test to terminate? (Will terminate when any condition is met in this order)")
-            .choices(get_termination_options(&mut sys, chosen_index))
-            .validate(|ans, _ | {
-                if ans.iter().filter(|&&a| a).count() < 1 {
-                    Err("You must choose at least one option.".into())
-                } else {
-                    Ok(())
-                }
-            }).build(),
-            Question::int("duration")
-                .message("How long would you like the test to be? (In Minutes)")
-                .when(|ans: &requestty::Answers| {
-                    ans.get("how_test")
-                        .expect("The 'How would you like to terminate question' could not be found. This should not have happened!")
-                        .as_list_items()
-                        .expect("Type of the 'How would you like to terminate' question has been changed. This should not have happened!")
-                        .iter()
-                        .any(|li| li.index == 0)
-                })
-                .default(1)
-                // lol why not
-                .validate_on_key(|time, _| time > 0 && time < i64::MAX)
-                .validate(|time, _| {
-                    if time > 0 && time < i64::MAX {
-                        Ok(())
-                    } else {
-                        Err("Time must be greater than 0 and less than the maximum value of an i64".into())
-                    }
-                })
-                .build(),
-            Question::int("temperature")
-                .message("What temperature would you like to stop at? (In Celsius)")
-                .when(|ans: &requestty::Answers| {
-                    ans.get("how_test")
-                        .expect("The 'How would you like to terminate question' could not be found. This should not have happened!")
-                        .as_list_items()
-                        .expect("Type of the 'How would you like to terminate' question has been changed. This should not have happened!")
-                        .iter()
-                        .any(|li| li.text == *"Temperature")
-                })
-                .default(90)
-                .validate_on_key(|temp, _| temp > 0 && temp < 150)
-                .validate(|temp, _| {
-                    let current_temp = sensors::cpu_temp(&mut sys, true);
-                    match (current_temp, temp) {
-                        (Some(current), 0..=150) => {
-                            if current > temp as f32 {
-                                Err(format!("Temperature must be greater than the current temperature of {current} degrees Celsius."))
-                            } else {
-                                Ok(())
-                            }
-                        },
-                        (Some(current), _) => Err(format!("Temperature must be greater than the current temperature of {current} degrees Celsius.")),
-                        (None, _) => Ok(())
-                    }
-                }).build(),
-        ];
+        let cpu_questions = match main_question {
+            "CPU" => Select::new("How many CPU(s) would you like to use", system_information.get_cpus_str())
+                .with_formatter(&|i| format!("{} CPU(s)", i.index + 1))
+                .prompt()
+                .ok(),
+            _ => None
+        };
 
 
+        let termination_method = MultiSelect::new("How would you like the test to terminate? (Will terminate when any condition is met in this order)", get_termination_options(&mut sys, main_question))
+            .with_validator(prompt::termination_method_validator)
+            .with_keep_filter(false)
+            .prompt()?;
 
-        let answers_two = requestty::prompt(questions_part_two)
-            .expect("Could not get method.. :(");
-        let duration = answers_two.get("duration")
-            .and_then(|d| d.as_int())
-            .map(|duration| Duration::from_secs(duration as u64 * 60));
-        let temperature = answers_two.get("temperature")
-            .and_then(|t| t.as_int());
-        let method = answers_two.get("method")
-            .and_then(|opt| opt.as_list_item())
-            .map(|method| stressor_choices[method.index].clone())
-            .unwrap_or(stressor_choices[0].clone());
 
-        if chosen_index == 0
+        let temperature = match termination_method.iter().any(|&i| i == "Temperature") {
+            true => {
+                let current_temperature = sensors::cpu_temp(&mut sys, true);
+                CustomType::<u8>::new("What temperature would you like to stop at? (In Celsius)")
+                    .with_default(90)
+                    .with_validator(move |input: &u8| prompt::temperature_validator(input, current_temperature))
+                    .with_help_message("Please pick a number 1 -> 255 (Even though if your computer gets this hot something is either wrong or you're crazy, it is recommended to not go above 90C)")
+                    .with_error_message("Please type a valid number")
+                    .prompt()
+                    .ok()
+            }
+            false => None
+        };
+
+        let duration = match termination_method.iter().any(|&i| i == "Time") {
+            true => CustomType::<u16>::new("How long would you like the stress test to last? (in minutes)")
+                .with_default(1)
+                .with_validator(prompt::duration_validator)
+                .with_help_message("Type in a number between 1 -> 65536")
+                .with_error_message("This number is too big. Number has to be in the range 1 -> 65536.")
+                .prompt()
+                .ok(),
+            false => None
+        };
+        let method = Select::new("What method would you like to use?", get_stressors(main_question))
+            .prompt()?;
+
+        let duration = duration.map(|dur| Duration::from_secs(dur as u64 * 60));
+
+        if main_question == "CPU"
         {
-            let cpus = &answers.get("cpu_question")
-                .expect("CPU Option was chosen and no cpu count was given. We gotta go bye bye.")
-                .as_list_item()
-                .expect("Type of 'How many CPU(s) question was changed'. This should not have happened")
-                .index + 1;
-
+            let cpus = cpu_questions
+                .expect("CPU Option was chosen and no cpu count was given. We gotta go bye bye.");
             match do_cpu_work(method, cpus, temperature, duration, &mut sys) {
                 Ok(job) => println!("{job}"),
                 Err(e) => println!("{e}"),
             }
         }
-        else if chosen_index == 1
+        else if main_question == "GPU"
         {
-            let gpu_text = &answers.get("gpu_select")
-                .expect("GPU Option was chosen and no gpu name was given. We gotta go bye bye.")
-                .as_list_item()
-                .expect("Type of 'Which GPU question was changed'. This should not have happened")
-                .text;
+            let gpu_text = gpu_question.expect("GPU Option was chosen and no gpu was given. We gotta go bye bye.");
+            let device = gpu_device.unwrap_or_else(|| Device::from(*{
+                let gpu_options = get_gpu_options().expect("Couldn't get GPU options. Something went wrong.");
 
-
-            let device = gpu_device.unwrap_or_else(|| {
-                let gpu_options = match get_gpu_options() {
-                    Ok(devices) => devices,
-                    Err(error) => panic!("Couldnt get gpu devices. Error: {error}")
-                };
-                let Some(gpu) = gpu_options.iter().find(|&gpu| {
-                    let g =  match gpu.info(DeviceInfo::Name) {
-                        Ok(name) => name,
-                        Err(_) => return false,
-                    }.to_string();
-                    g == *gpu_text
-                }) else {
-                    panic!("Couldnt find gpu device. Something went wrong.");
-                };
-                *gpu
-            });
+                gpu_options
+                    .into_iter()
+                    .find(|&gpu| {
+                        match gpu.info(DeviceInfo::Name) {
+                            Ok(name) => name.to_string() == *gpu_text,
+                            Err(_) => false,
+                        }
+                    })
+                    .expect("Couldn't find GPU device. Something went wrong.")
+            }));
 
             if gpu_ctx.is_none() {
-                gpu_ctx = match OpenCLContext::new(device) {
-                    Ok(ctx) => Some(ctx),
-                    Err(error) => {
-                        println!("Could not get GPU context. Something went wrong. Error {error}");
-                        None
-                    }
-                }
+                gpu_ctx = OpenCLContext::new(device)
+                    .ok();
             }
-
-            // going to fix this later
-            let output = match &gpu_ctx {
-                Some(ctx) => {
-                    match get_opencl_program(&method, ctx) {
-                        Ok(program) => {
-                            match do_gpu_work(program, duration, method) {
-                                Ok(job) => format!("{job}"),
-                                Err(e) => e.to_string(),
-                            }
-                        },
-                        Err(err) => {
-                            err
-                        }
-                    }
-
-                },
-                None => "Could not get GPU context. Something went wrong.".to_string()
-            };
+            let output = gpu_ctx.as_ref().and_then(|ctx| {
+                get_opencl_program(&method, ctx)
+                    .and_then(|program| do_gpu_work(program, duration, method))
+                    .map(|job| format!("{job}"))
+                    .ok()
+            }).unwrap_or_else(|| "Could not get GPU context. Something went wrong.".to_string());
 
             println!("{output}");
         }
 
 
+        let rerun_question = Confirm::new("Would you like to run another test?")
+            .with_help_message("To continue type (y) to exit type (n)")
+            .prompt()?;
 
-
-        let answer = Question::confirm("test_rerun")
-            .message("Would you like to run another test?")
-            .default(true)
-            .build();
-
-        let prompt = requestty::prompt([answer])
-            .expect("Couldnt get the answers. Something terrible went wrong.");
-        let rerun = prompt.get("test_rerun")
-            .expect("Couldnt get the rerun answer. Something terrible went wrong.")
-            .as_bool()
-            .expect("Couldnt get the rerun answer. Something terrible went wrong.");
-
-        if !rerun { break; }
+        if !rerun_question { break; }
     }
+
+    Ok(())
 }
 
-fn get_stressed_components(sys_info: &GreetingValues) -> Vec<String> {
-    let mut ans: Vec<String> = Vec::with_capacity(2);
-    ans.push("CPU".to_string());
-    if !sys_info.gpu_information.is_empty() {
-        ans.push("GPU".to_string())
+fn get_stressed_components(sys_info: &GreetingValues) -> Vec<&str> {
+    if sys_info.gpu_information.is_empty() {
+        vec!["CPU"]
+    } else {
+        vec!["CPU", "GPU"]
     }
-    ans
-
 }
 
 fn get_stressors(
-    index: &usize
+    choice: &str
 ) -> Vec<Stressor> {
-    match index {
-        0 => {
-            let mut cpu_options = Vec::with_capacity(6);
-            cpu_options.extend_from_slice(
-                &[Stressor::Fibonacci, Stressor::FloatAddition, Stressor::FloatMultiplication, Stressor::MatrixMultiplication,
-                Stressor::SquareRoot, Stressor::Primes]
-            );
-            cpu_options
-
-        },
-        1 => {
-            let mut gpu_options = Vec::with_capacity(3);
-            gpu_options.extend_from_slice(
-                &[Stressor::SquareRoot, Stressor::MatrixMultiplication, Stressor::FloatAddition]
-            );
-            gpu_options
-        }
+    match choice {
+        "CPU" => vec![Stressor::Fibonacci, Stressor::FloatAddition, Stressor::FloatMultiplication, Stressor::MatrixMultiplication, Stressor::SquareRoot, Stressor::Primes, Stressor::QuakeInverseSquareRoot, Stressor::FloatDivision],
+        "GPU" => vec![Stressor::SquareRoot, Stressor::MatrixMultiplication, Stressor::FloatAddition],
         _ => panic!("Invalid stressor")
     }
 }
 
-fn get_termination_options(sys: &mut System, chosen_index: usize) -> Vec<String> {
-    let mut options = Vec::new();
-    options.push("Time".to_string());
-    if let (0, true) = (chosen_index, sensors::cpu_temp(sys, true).is_some()) {
-        options.push("Temperature".to_string())
+fn get_termination_options(sys: &mut System, chosen_component: &str) -> Vec<&'static str> {
+    if let ("CPU", true) = (chosen_component, sensors::cpu_temp(sys, true).is_some()) {
+        vec!["Time", "Temperature"]
+    } else {
+        vec!["Time"]
     }
-    options
 }
 
 fn get_stressor_functions(
     stressor: &Stressor
 ) -> fn() {
     match stressor {
-        Stressor::Fibonacci => fibonacci_cpu,
-        Stressor::Primes => primes,
-        Stressor::MatrixMultiplication => matrix_multiplication,
-        Stressor::FloatAddition => float_add,
-        Stressor::FloatMultiplication => float_mul,
-        Stressor::SquareRoot => sqrt_cpu,
+        Stressor::Fibonacci => stressors::fibonacci_cpu,
+        Stressor::Primes => stressors::primes,
+        Stressor::MatrixMultiplication => stressors::matrix_multiplication,
+        Stressor::FloatAddition => stressors::float_add,
+        Stressor::FloatMultiplication => stressors::float_mul,
+        Stressor::SquareRoot => || { stressors::sqrt_cpu(std::hint::black_box(1_143_243_423.112_354_3)) },
+        Stressor::FloatDivision => stressors::float_division,
+        Stressor::QuakeInverseSquareRoot => || { stressors::quake_rsqrt(std::hint::black_box(1_143_243_423.112_354_3)) }
     }
 }
 
@@ -301,18 +215,18 @@ pub fn get_opencl_program(
             let sqrt_vector = vec![952_f32; OPENCL_VECTOR_SIZE];
             let result_vector = vec![0_f32; OPENCL_VECTOR_SIZE];
             OpenCLProgram::new(ctx, OPENCL_SQUARE_ROOT, "sqrt", vec![sqrt_vector, result_vector])
-        },
-        Stressor::FloatAddition  => {
+        }
+        Stressor::FloatAddition => {
             let f_add_vector = vec![952.139_1_f32; OPENCL_VECTOR_SIZE];
             let result_vector = vec![0_f32; OPENCL_VECTOR_SIZE];
             OpenCLProgram::new(ctx, OPENCL_FLOAT_ADD, "float_add", vec![f_add_vector, result_vector])
-        },
+        }
         Stressor::MatrixMultiplication => {
             let matrix_a = vec![201.139_13_f32; OPENCL_VECTOR_SIZE];
             let matrix_b = vec![952.139_1_f32; OPENCL_VECTOR_SIZE];
             let result_vector = vec![0_f32; OPENCL_VECTOR_SIZE];
-            OpenCLProgram::new(ctx, OPENCL_MATRIX_MULTIPLICATION, "matrix_mult", vec![matrix_a, matrix_b, result_vector] )
-        },
+            OpenCLProgram::new(ctx, OPENCL_MATRIX_MULTIPLICATION, "matrix_mult", vec![matrix_a, matrix_b, result_vector])
+        }
         _ => {
             println!("No method found, defaulting to sqrt");
             let sqrt_vector = vec![952_f32; OPENCL_VECTOR_SIZE];
@@ -353,9 +267,7 @@ fn do_gpu_work(
             iter_failed = true;
         });
 
-        if iter_failed {
-            continue;
-        }
+        if iter_failed { continue; }
 
         iterations += 1;
 
@@ -365,7 +277,7 @@ fn do_gpu_work(
     }
 
     Ok(
-            Job {
+        Job {
             name: method.to_string(),
             total_iterations: iterations,
             cpu_count: None,
@@ -378,11 +290,10 @@ fn do_gpu_work(
     )
 }
 
-
 fn do_cpu_work(
     method: Stressor,
     cpu_count: usize,
-    stop_temperature: Option<i64>,
+    stop_temperature: Option<u8>,
     duration: Option<Duration>,
     system: &mut System,
 ) -> Result<Job, String> {
@@ -402,6 +313,7 @@ fn do_cpu_work(
             let thread_running = running.clone();
             let handle = scope.spawn(move ||
                 {
+                    // for the stressor functions check the asm
                     let mut iterations: u64 = 0;
                     while thread_running.load(Relaxed) == 0
                     {
@@ -453,6 +365,14 @@ fn do_cpu_work(
     })
 }
 
+pub fn setup() -> Result<Vec<Platform>, Box<dyn Any + Send + 'static>> {
+    inquire::set_global_render_config(prompt::get_nice_render_config_new());
+    let normal_hook = panic::take_hook();
+    panic::set_hook(Box::new(move |_info| {}));
+    let platforms = panic::catch_unwind(Platform::list);
+    panic::set_hook(normal_hook);
+    platforms
+}
 
 pub struct Job {
     name: String,
@@ -461,7 +381,7 @@ pub struct Job {
     average_cpu_temp: Option<f32>,
     min_cpu_temp: Option<f32>,
     max_cpu_temp: Option<f32>,
-    stop_reasoning: String
+    stop_reasoning: String,
 }
 
 impl std::fmt::Display for Job {
@@ -476,19 +396,35 @@ impl std::fmt::Display for Job {
         }
 
         if let Some(max_temp) = self.max_cpu_temp {
-            write!(f, "\n⇁ Maximum CPU Temperature: {max_temp:.2}°C")?;
+            write!(f, "\n⇁ Peak CPU Temperature: {max_temp:.2}°C")?;
         }
 
         if let Some(min_temp) = self.min_cpu_temp {
-            write!(f, "\n⇁ Max CPU Temperature: {min_temp:.2}°C")?;
+            write!(f, "\n⇁ Minimum CPU Temperature: {min_temp:.2}°C")?;
         }
 
         if let Some(average_temp) = self.average_cpu_temp {
-            write!(f, "\n⇁ Max CPU Temperature: {average_temp:.2}°C")?;
+            write!(f, "\n⇁ Average CPU Temperature: {average_temp:.2}°C")?;
         }
 
 
         Ok(())
+    }
+}
+fn obtain_platform(platforms: Vec<Platform>) -> Option<Platform> {
+    match platforms.len() {
+        0 => {
+            println!("{NO_OPENCL_STRING}");
+            None
+        },
+        1 => Some(platforms[0]),
+        _ => match Select::new("Which GPU Platform would you like to use", platforms).with_formatter(&prompt::platform_formatter).prompt() {
+            Ok(platform) => Some(platform),
+            Err(error) => {
+                eprintln!("Some error has occurred. GPU Stress testing will be disabled. Error {error}");
+                None
+            }
+        }
     }
 }
 
