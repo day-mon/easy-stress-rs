@@ -30,7 +30,7 @@ jobs:
           apt-get install -y ocl-icd-opencl-dev
           apt-get install -y curl gcc
       - name: Install Rust Toolchain
-        uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af #@v1
+        uses: actions-rs/toolchain@v1.0.6
         with:
           profile: minimal
           toolchain: stable
@@ -55,7 +55,7 @@ jobs:
           mkdir target/release/deps
           move OpenCL.lib target/release/deps
       - name: Install Rust Toolchain
-        uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af #@v1
+        uses: actions-rs/toolchain@v1.0.6
         with:
           profile: minimal
           toolchain: stable
@@ -74,7 +74,7 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v3
       - name: Install Rust Toolchain
-        uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af #@v1
+        uses: actions-rs/toolchain@v1.0.6
         with:
           profile: minimal
           toolchain: stable
