@@ -267,9 +267,7 @@ fn do_gpu_work(
             iter_failed = true;
         });
 
-        if iter_failed {
-            continue;
-        }
+        if iter_failed { continue; }
 
         iterations += 1;
 

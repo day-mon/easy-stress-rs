@@ -8,6 +8,4 @@ edition = "2021"
 inquire = "0.5.3"
 sysinfo = "0.27.6"
 colored = "2"
-ctrlc = { version = "3.0", features = ["termination"] }
 ocl = "0.19.4"
-strum = { version = "0.24", features = ["derive"] }

@@ -1,8 +1,9 @@
+use std::fmt::{Display, Formatter};
 use ocl::{Platform, Device, Context, Queue, Program, Kernel, Buffer};
 use ocl::core::{DeviceInfo, DeviceInfoResult};
-use strum::Display;
 
-#[derive(Clone, Display)]
+
+#[derive(Clone)]
 pub enum Stressor {
     Fibonacci,
     Primes,
@@ -14,6 +15,20 @@ pub enum Stressor {
     InverseSquareRoot
 }
 
+impl Display for Stressor {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Stressor::Fibonacci => f.write_str("Fibonacci"),
+            Stressor::Primes => f.write_str("Primes"),
+            Stressor::MatrixMultiplication => f.write_str("Matrix Multiplication"),
+            Stressor::FloatAddition => f.write_str("Float Addition"),
+            Stressor::FloatMultiplication => f.write_str("Float Multiplication"),
+            Stressor::FloatDivision => f.write_str("Float Division"),
+            Stressor::SquareRoot => f.write_str("Square Root"),
+            Stressor::InverseSquareRoot => f.write_str("Inverse Square Root")
+        }
+    }
+}
 
 pub const OPENCL_VECTOR_SIZE: usize = 10_000;
 
@@ -60,7 +75,7 @@ __kernel void primes(__global int* a, __global int* b) {
 "#;
 
 /*
-example::sqrt_cpu:
+sqrt_cpu:
         push    rax
         mov     eax, 10000000
         mov     rcx, rsp
@@ -75,8 +90,6 @@ example::sqrt_cpu:
         ret
  */
 pub fn sqrt_cpu(num: f64)  {
-    // use asm to prevent compiler from optimizing out the loop
-    // use a f64 for loop
     for _ in 0..10_000_000 {
         std::hint::black_box(std::hint::black_box(num).sqrt());
     }
