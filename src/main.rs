@@ -22,7 +22,7 @@ use ocl::core::DeviceInfo;
 use sysinfo::{System, SystemExt};
 use crate::components::GreetingValues;
 use crate::reporting::{prettify_output, watch_in_background};
-use crate::stressors::*;
+use crate::stressors::{OpenCLContext, Stressor};
 
 const NO_OPENCL_STRING: &str = r#"No OpenCL platforms found. This is probably because you dont have a GPU or you dont have GPU compatible drivers installed.
 If you have a GPU and the drivers are installed, please report this issue to the developers.
@@ -198,15 +198,15 @@ fn get_stressor_functions(
     stressor: &Stressor
 ) -> fn() {
     match stressor {
-        Stressor::Fibonacci => fibonacci_cpu,
-        Stressor::Primes => primes,
-        Stressor::MatrixMultiplication => matrix_multiplication,
-        Stressor::FloatAddition => float_add,
-        Stressor::FloatMultiplication => float_mul,
-        Stressor::SquareRoot => || { sqrt_cpu(std::hint::black_box(1_143_243_423.112_354_3)) },
-        Stressor::FloatDivision => float_division,
-        _ => if cfg!(target_arch = "x86_64") && stressor == &Stressor::InverseSquareRoot{
-            || { invsqrt(std::hint::black_box(1_143_243_423.112_354_3)) }
+        Stressor::Fibonacci => stressors::fibonacci_cpu,
+        Stressor::Primes => stressors::primes,
+        Stressor::MatrixMultiplication => stressors::matrix_multiplication,
+        Stressor::FloatAddition => stressors::float_add,
+        Stressor::FloatMultiplication => stressors::float_mul,
+        Stressor::SquareRoot => || { stressors::sqrt_cpu(std::hint::black_box(1_143_243_423.112_354_3)) },
+        Stressor::FloatDivision => stressors::float_division,
+        Stressor::InverseSquareRoot => if cfg!(target_arch = "x86_64") {
+            || { stressors::invsqrt(std::hint::black_box(1_143_243_423.112_354_3)) }
         } else {
             panic!("Invalid stressor")
         }
