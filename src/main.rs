@@ -22,7 +22,7 @@ use ocl::core::DeviceInfo;
 use sysinfo::{System, SystemExt};
 use crate::components::GreetingValues;
 use crate::reporting::{prettify_output, watch_in_background};
-use crate::stressors::{OpenCLContext, Stressor};
+use crate::stressors::{OPENCL_FLOAT_ADD, OPENCL_MATRIX_MULTIPLICATION, OPENCL_SQUARE_ROOT, OPENCL_VECTOR_SIZE, OpenCLContext, OpenCLProgram, Stressor};
 
 const NO_OPENCL_STRING: &str = r#"No OpenCL platforms found. This is probably because you dont have a GPU or you dont have GPU compatible drivers installed.
 If you have a GPU and the drivers are installed, please report this issue to the developers.
