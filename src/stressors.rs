@@ -3,7 +3,7 @@ use ocl::{Platform, Device, Context, Queue, Program, Kernel, Buffer};
 use ocl::core::{DeviceInfo, DeviceInfoResult};
 
 
-#[derive(Clone)]
+#[derive(Clone, Eq, PartialEq)]
 pub enum Stressor {
     Fibonacci,
     Primes,

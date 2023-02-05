@@ -204,8 +204,12 @@ fn get_stressor_functions(
         Stressor::FloatAddition => float_add,
         Stressor::FloatMultiplication => float_mul,
         Stressor::SquareRoot => || { sqrt_cpu(std::hint::black_box(1_143_243_423.112_354_3)) },
-        Stressor::InverseSquareRoot => || { invsqrt(std::hint::black_box(1_143_243_423.112_354_3)) },
-        Stressor::FloatDivision => float_division
+        Stressor::FloatDivision => float_division,
+        _ => if cfg!(target_arch = "x86_64") && stressor == &Stressor::InverseSquareRoot{
+            || { invsqrt(std::hint::black_box(1_143_243_423.112_354_3)) }
+        } else {
+            panic!("Invalid stressor")
+        }
     }
 }
 
