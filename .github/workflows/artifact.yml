@@ -17,7 +17,7 @@ on:
 jobs:
   linux:
     name: Artifact Linux (x64)
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     container:
       image: ubuntu:16.04
     steps:
@@ -29,12 +29,8 @@ jobs:
           apt-get upgrade
           apt-get install -y ocl-icd-opencl-dev
           apt-get install -y curl gcc
-      - name: Install Rust Toolchain
-        uses: actions-rs/toolchain@v1.0.6
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
+      - name: Update and set Stable Toolchain
+        run: rustup update stable && rustup default stable 
       - name: Build Artifact
         run: cargo build -r
       - name: Upload Artifact
@@ -54,14 +50,11 @@ jobs:
           powershell -Command "Invoke-WebRequest -Uri 'https://upload.montague.im/u/OpenCL.lib' -OutFile OpenCL.lib"
           mkdir target/release/deps
           move OpenCL.lib target/release/deps
-      - name: Install Rust Toolchain
-        uses: actions-rs/toolchain@v1.0.6
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
+          # x86_64-pc-windows-msvc
+      - name: Update and set Stable Toolchain
+        run: rustup update stable && rustup default stable && rustup add x86_64-pc-windows-msvc
       - name: Build Artifact
-        run: cargo build -r
+        run: cargo build -r --target=x86_64-pc-windows-msvc
       - name: Upload Artifact
         uses: actions/upload-artifact@v3
         with:
