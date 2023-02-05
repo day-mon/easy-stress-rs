@@ -12,7 +12,7 @@ pub enum Stressor {
     FloatMultiplication,
     FloatDivision,
     SquareRoot,
-    InverseSquareRoot
+    QuakeInverseSquareRoot,
 }
 
 impl Display for Stressor {
@@ -25,7 +25,7 @@ impl Display for Stressor {
             Stressor::FloatMultiplication => f.write_str("Float Multiplication"),
             Stressor::FloatDivision => f.write_str("Float Division"),
             Stressor::SquareRoot => f.write_str("Square Root"),
-            Stressor::InverseSquareRoot => f.write_str("Inverse Square Root")
+            Stressor::QuakeInverseSquareRoot => f.write_str("Quake Inverse Square Root")
         }
     }
 }
@@ -89,33 +89,22 @@ sqrt_cpu:
         pop     rax
         ret
  */
-pub fn sqrt_cpu(num: f64)  {
+pub fn sqrt_cpu(num: f64) {
     for _ in 0..10_000_000 {
         std::hint::black_box(std::hint::black_box(num).sqrt());
     }
 }
 
-/*
-example::invsqrt:
-        push    rax
-        mov     eax, 10000000
-.LBB0_1:
-
-        rsqrtss xmm0, xmm0
-
-        dec     eax
-        jne     .LBB0_1
-        pop     rax
-        ret
- */
-#[cfg(target_arch = "x86_64")]
-pub fn invsqrt(mut x: f32)  {
+pub fn quake_rsqrt(number: f32) {
     for _ in 0..10_000_000 {
-        unsafe {
-            std::arch::asm!("rsqrtss {x}, {x}", x = inout(xmm_reg) x);
-        }
+        let mut _result = 0_f32;
+        let mut i: i32 = number.to_bits() as i32;
+        i = std::hint::black_box(0x5F375A86_i32.wrapping_sub(i >> 1));
+        let y = std::hint::black_box(f32::from_bits(i as u32));
+        _result = std::hint::black_box(y * (1.5 - (number * 0.5 * y * y)));
     }
 }
+
 /*
 example::factorial_cpu:
         push    r14
@@ -179,7 +168,7 @@ pub fn fibonacci_cpu() {
 pub fn float_add() {
     let mut _x = 0.0;
     for _ in 0..10_000_000 {
-        _x  = std::hint::black_box(_x + 0.139127123343);
+        _x = std::hint::black_box(_x + 0.139127123343);
     }
 }
 
@@ -231,14 +220,14 @@ pub fn matrix_multiplication() {
 pub fn float_mul() {
     let mut _x = 0.0;
     for _ in 0..10_000_000 {
-        _x  = std::hint::black_box(_x * 0.139127123343);
+        _x = std::hint::black_box(_x * 0.139127123343);
     }
 }
 
 pub fn float_division() {
     let mut _x = f64::MAX;
     for _ in 0..10_000_000 {
-        _x  = std::hint::black_box(_x / 2.139127123343);
+        _x = std::hint::black_box(_x / 2.139127123343);
     }
 }
 
@@ -268,7 +257,6 @@ impl OpenCLContext {
         )
     }
 }
-
 
 
 pub struct OpenCLProgram {

@@ -176,11 +176,7 @@ fn get_stressors(
     choice: &str
 ) -> Vec<Stressor> {
     match choice {
-        "CPU" => if cfg!(target_arch = "x86_64") {
-            vec![Stressor::Fibonacci, Stressor::FloatAddition, Stressor::FloatMultiplication, Stressor::MatrixMultiplication, Stressor::SquareRoot, Stressor::Primes, Stressor::InverseSquareRoot, Stressor::FloatDivision]
-        } else {
-            vec![Stressor::Fibonacci, Stressor::FloatAddition, Stressor::FloatMultiplication, Stressor::MatrixMultiplication, Stressor::SquareRoot, Stressor::Primes, Stressor::FloatDivision]
-        },
+        "CPU" => vec![Stressor::Fibonacci, Stressor::FloatAddition, Stressor::FloatMultiplication, Stressor::MatrixMultiplication, Stressor::SquareRoot, Stressor::Primes, Stressor::QuakeInverseSquareRoot, Stressor::FloatDivision],
         "GPU" => vec![Stressor::SquareRoot, Stressor::MatrixMultiplication, Stressor::FloatAddition],
         _ => panic!("Invalid stressor")
     }
@@ -205,11 +201,7 @@ fn get_stressor_functions(
         Stressor::FloatMultiplication => stressors::float_mul,
         Stressor::SquareRoot => || { stressors::sqrt_cpu(std::hint::black_box(1_143_243_423.112_354_3)) },
         Stressor::FloatDivision => stressors::float_division,
-        Stressor::InverseSquareRoot => if cfg!(target_arch = "x86_64") {
-            || { stressors::invsqrt(std::hint::black_box(1_143_243_423.112_354_3)) }
-        } else {
-            panic!("Invalid stressor")
-        }
+        Stressor::QuakeInverseSquareRoot => || { stressors::quake_rsqrt(std::hint::black_box(1_143_243_423.112_354_3)) }
     }
 }
 
