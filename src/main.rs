@@ -121,52 +121,34 @@ fn main() -> InquireResult<()> {
                 Ok(job) => println!("{job}"),
                 Err(e) => println!("{e}"),
             }
-        } else if main_question == "GPU"
+        }
+        else if main_question == "GPU"
         {
             let gpu_text = gpu_question.expect("GPU Option was chosen and no gpu was given. We gotta go bye bye.");
+            let device = gpu_device.unwrap_or_else(|| Device::from(*{
+                let gpu_options = get_gpu_options().expect("Couldn't get GPU options. Something went wrong.");
 
-            let device = gpu_device.unwrap_or_else(|| {
-                let gpu_options = get_gpu_options()
-                    .expect("Couldnt get gpu options. Something went wrong.");
-                let Some(gpu) = gpu_options.iter().find(|&gpu| {
-                    let g = match gpu.info(DeviceInfo::Name) {
-                        Ok(name) => name,
-                        Err(_) => return false,
-                    }.to_string();
-                    g == *gpu_text
-                }) else {
-                    panic!("Couldnt find gpu device. Something went wrong.");
-                };
-                *gpu
-            });
+                gpu_options
+                    .into_iter()
+                    .find(|&gpu| {
+                        match gpu.info(DeviceInfo::Name) {
+                            Ok(name) => name.to_string() == *gpu_text,
+                            Err(_) => false,
+                        }
+                    })
+                    .expect("Couldn't find GPU device. Something went wrong.")
+            }));
 
             if gpu_ctx.is_none() {
-                gpu_ctx = match OpenCLContext::new(device) {
-                    Ok(ctx) => Some(ctx),
-                    Err(error) => {
-                        println!("Could not get GPU context. Something went wrong. Error {error}");
-                        None
-                    }
-                }
+                gpu_ctx = OpenCLContext::new(device)
+                    .ok();
             }
-
-            // going to fix this later
-            let output = match &gpu_ctx {
-                Some(ctx) => {
-                    match get_opencl_program(&method, ctx) {
-                        Ok(program) => {
-                            match do_gpu_work(program, duration, method) {
-                                Ok(job) => format!("{job}"),
-                                Err(e) => e.to_string(),
-                            }
-                        }
-                        Err(err) => {
-                            err
-                        }
-                    }
-                }
-                None => "Could not get GPU context. Something went wrong.".to_string()
-            };
+            let output = gpu_ctx.as_ref().and_then(|ctx| {
+                get_opencl_program(&method, ctx)
+                    .and_then(|program| do_gpu_work(program, duration, method))
+                    .map(|job| format!("{job}"))
+                    .ok()
+            }).unwrap_or_else(|| "Could not get GPU context. Something went wrong.".to_string());
 
             println!("{output}");
         }
@@ -218,7 +200,7 @@ fn get_stressor_functions(
         Stressor::FloatAddition => float_add,
         Stressor::FloatMultiplication => float_mul,
         Stressor::SquareRoot => || { sqrt_cpu(std::hint::black_box(1_143_243_423.112_354_3)) },
-        Stressor::InverseSquareRoot => || { invsqrt(1_143_243_423.112_354_3) },
+        Stressor::InverseSquareRoot => || { invsqrt(std::hint::black_box(1_143_243_423.112_354_3)) },
         Stressor::FloatDivision => float_division
     }
 }

@@ -53,12 +53,12 @@ pub fn duration_validator(option: &u16)  -> Result<Validation, CustomUserError> 
 }
 
 pub fn platform_formatter(list_option: ListOption<&Platform>) -> String {
-    let name = list_option.value.name().ok().unwrap();
+    let name = list_option.value.name().unwrap_or("Unknown".to_string());
     let devices = Device::list(list_option.value, Some(DeviceType::GPU))
         .unwrap_or(vec![]);
     let mut device_string = String::new();
     for device in devices {
-        device_string.push_str(&format!("{} | ", device.name().unwrap()));
+        device_string.push_str(&format!("{} | ", device.name().unwrap_or("Unknown".to_string())));
     }
     format!("{name} | {device_string}")
 }

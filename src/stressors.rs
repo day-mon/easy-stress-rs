@@ -58,14 +58,43 @@ __kernel void primes(__global int* a, __global int* b) {
     b[id] = a[id] * a[id + 1];
 }
 "#;
+
+/*
+example::sqrt_cpu:
+        push    rax
+        mov     eax, 10000000
+        mov     rcx, rsp
+.LBB0_1:
+        movsd   qword ptr [rsp], xmm0
+        movsd   xmm1, qword ptr [rsp]
+        sqrtsd  xmm1, xmm1
+        movsd   qword ptr [rsp], xmm1
+        dec     eax
+        jne     .LBB0_1
+        pop     rax
+        ret
+ */
 pub fn sqrt_cpu(num: f64)  {
     // use asm to prevent compiler from optimizing out the loop
     // use a f64 for loop
     for _ in 0..10_000_000 {
-        std::hint::black_box(num.sqrt());
+        std::hint::black_box(std::hint::black_box(num).sqrt());
     }
 }
 
+/*
+example::invsqrt:
+        push    rax
+        mov     eax, 10000000
+.LBB0_1:
+
+        rsqrtss xmm0, xmm0
+
+        dec     eax
+        jne     .LBB0_1
+        pop     rax
+        ret
+ */
 pub fn invsqrt(mut x: f32)  {
     for _ in 0..10_000_000 {
         unsafe {
@@ -73,6 +102,47 @@ pub fn invsqrt(mut x: f32)  {
         }
     }
 }
+/*
+example::factorial_cpu:
+        push    r14
+        push    rbx
+        sub     rsp, 16
+        cmp     rdi, 2
+        mov     rax, rsi
+        sbb     rax, 0
+        jb      .LBB0_3
+        mov     ecx, 1
+        xor     r9d, r9d
+        mov     r8, rsp
+        mov     ebx, 1
+        xor     r14d, r14d
+        mov     r10d, 1
+        xor     r11d, r11d
+.LBB0_2:
+        add     r10, 1
+        adc     r11, 0
+        mov     rax, rcx
+        mul     rbx
+        imul    rcx, r14
+        add     rcx, rdx
+        imul    r9, rbx
+        add     r9, rcx
+        mov     qword ptr [rsp], rax
+        mov     qword ptr [rsp + 8], r9
+        mov     rcx, qword ptr [rsp]
+        mov     r9, qword ptr [rsp + 8]
+        cmp     r10, rdi
+        mov     rax, r11
+        sbb     rax, rsi
+        mov     rbx, r10
+        mov     r14, r11
+        jb      .LBB0_2
+.LBB0_3:
+        add     rsp, 16
+        pop     rbx
+        pop     r14
+        ret
+ */
 pub fn factorial_cpu(amount: u128) {
     let mut _result = 1_u128;
     for i in 1..amount {
