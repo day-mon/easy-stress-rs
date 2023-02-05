@@ -108,6 +108,7 @@ example::invsqrt:
         pop     rax
         ret
  */
+#[cfg(target_arch = "x86_64")]
 pub fn invsqrt(mut x: f32)  {
     for _ in 0..10_000_000 {
         unsafe {

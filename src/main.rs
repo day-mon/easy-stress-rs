@@ -176,7 +176,11 @@ fn get_stressors(
     choice: &str
 ) -> Vec<Stressor> {
     match choice {
-        "CPU" => vec![Stressor::Fibonacci, Stressor::FloatAddition, Stressor::FloatMultiplication, Stressor::MatrixMultiplication, Stressor::SquareRoot, Stressor::Primes, Stressor::InverseSquareRoot, Stressor::FloatDivision],
+        "CPU" => if cfg!(target_arch = "x86_64") {
+            vec![Stressor::Fibonacci, Stressor::FloatAddition, Stressor::FloatMultiplication, Stressor::MatrixMultiplication, Stressor::SquareRoot, Stressor::Primes, Stressor::InverseSquareRoot, Stressor::FloatDivision]
+        } else {
+            vec![Stressor::Fibonacci, Stressor::FloatAddition, Stressor::FloatMultiplication, Stressor::MatrixMultiplication, Stressor::SquareRoot, Stressor::Primes, Stressor::FloatDivision]
+        },
         "GPU" => vec![Stressor::SquareRoot, Stressor::MatrixMultiplication, Stressor::FloatAddition],
         _ => panic!("Invalid stressor")
     }
