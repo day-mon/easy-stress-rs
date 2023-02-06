@@ -8,7 +8,8 @@ use crate::sensors;
 
 pub const CARRIAGE_RETURN: char = '\r';
 
-pub struct BackgroundReport {
+pub struct BackgroundReport
+{
     pub average_cpu_temp: Option<f32>,
     pub min_cpu_temp: Option<f32>,
     pub max_cpu_temp: Option<f32>,
@@ -27,7 +28,7 @@ pub fn watch_in_background(
     let mut max_cpu_temp = 0f32;
 
 
-    while running.load(Ordering::Relaxed) == 0 {
+    while running.load(Ordering::SeqCst) == 0 {
 
         let temp = sensors::cpu_temp(system, true);
 
@@ -46,7 +47,7 @@ pub fn watch_in_background(
 
             if let Some(stop_temp) = stop_temperature {
                 if temp > stop_temp as f32 {
-                    running.store(2, Ordering::Relaxed)
+                    running.store(2, Ordering::SeqCst)
                 }
             }
         }
@@ -54,7 +55,7 @@ pub fn watch_in_background(
 
         if let Some(duration) = duration {
             if start_time.elapsed() > duration {
-                running.store(1, Ordering::Relaxed)
+                running.store(1, Ordering::SeqCst)
             }
         }
 
@@ -83,26 +84,29 @@ pub fn prettify_output(
         None => start_time.elapsed().as_secs(),
     };
 
-    let time_string = if time_left > 60 {
-        format!(
+    let time_string = match time_left  {
+        time if time > 3600 => format!(
+            "🕛: {}h {}m {}s",
+            time / 3600,
+            (time % 3600) / 60,
+            time % 60
+        ),
+        time if time > 60 => format!(
             "🕛: {}m {}s",
-            time_left / 60,
-            time_left % 60
-        )
-    } else {
-        format!("🕛: {time_left}s")
+            time / 60,
+            time % 60
+        ),
+        time => format!("🕛: {time}s"),
     };
 
     display_string.push_str(time_string.as_str());
 
     if let Some(temp) = current_temp {
         display_string.push_str(" 🌡️: ");
-        let temp_text = if temp > 80.0 {
-            format!("{temp}°C").red().to_string()
-        } else if temp > 60.0 {
-            format!("{temp}°C").yellow().to_string()
-        } else {
-            format!("{temp}°C").green().to_string()
+        let temp_text = match temp {
+            temp if temp > 80.0 => format!("{temp}°C").red().to_string(),
+            temp if temp > 60.0 => format!("{temp}°C").yellow().to_string(),
+            _ => format!("{temp}°C").green().to_string(),
         };
         display_string.push_str(temp_text.as_str());
     }
