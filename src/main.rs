@@ -8,8 +8,7 @@ mod prompt;
 
 use std::io::{stdout, Write};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize};
-use std::sync::atomic::Ordering::Relaxed;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{panic, thread};
 use std::any::Any;
 use std::time::{Duration, Instant};
@@ -102,8 +101,8 @@ fn main() -> InquireResult<()> {
             true => CustomType::<u16>::new("How long would you like the stress test to last? (in minutes)")
                 .with_default(1)
                 .with_validator(prompt::duration_validator)
-                .with_help_message("Type in a number between 1 -> 65536")
-                .with_error_message("This number is too big. Number has to be in the range 1 -> 65536.")
+                .with_help_message("Type in a number between 1 -> 65535")
+                .with_error_message("This number is too big. Number has to be in the range 1 -> 65535.")
                 .prompt()
                 .ok(),
             false => None
@@ -315,7 +314,7 @@ fn do_cpu_work(
                 {
                     // for the stressor functions check the asm
                     let mut iterations: u64 = 0;
-                    while thread_running.load(Relaxed) == 0
+                    while thread_running.load(Ordering::SeqCst) == 0
                     {
                         function();
                         iterations += 1;
@@ -334,11 +333,11 @@ fn do_cpu_work(
             atomic_bool,
         );
 
-        let stop_reason = match running.load(Relaxed) {
+        let stop_reason = match running.load(Ordering::SeqCst) {
             1 => "Time Limit exceeded",
             2 => "Temperature exceeded",
             3 => "Ctrl-C caught",
-            _ => panic!("This should have never happened. {} is not a valid option", running.load(Relaxed))
+            _ => panic!("This should have never happened. {} is not a valid option", running.load(Ordering::SeqCst))
         }.to_string();
 
         let mut total_iterations = 0;

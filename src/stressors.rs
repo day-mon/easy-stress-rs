@@ -1,7 +1,7 @@
 use std::fmt::{Display, Formatter};
-use ocl::{Platform, Device, Context, Queue, Program, Kernel, Buffer};
-use ocl::core::{DeviceInfo, DeviceInfoResult};
 
+use ocl::{Buffer, Context, Device, Kernel, Platform, Program, Queue};
+use ocl::core::{DeviceInfo, DeviceInfoResult};
 
 #[derive(Clone, Eq, PartialEq)]
 pub enum Stressor {
@@ -311,12 +311,22 @@ impl OpenCLProgram {
         Ok(OpenCLProgram { program, kernel, wg_size })
     }
 
-    pub fn run(&self) -> ocl::Result<()> {
+    pub fn run(&self) -> Result<(), String> {
         unsafe {
             self.kernel
                 .cmd()
                 .global_work_size((self.wg_size[0], self.wg_size[1], self.wg_size[2]))
                 .enq()
+        }.map_err(|e| e.to_string())?;
+
+
+        match self.kernel.default_queue() {
+            Some(queue) => {
+                queue.flush().map_err(|e| e.to_string())?;
+                Ok(())
+            },
+            None => Err("No default queue".to_string()),
         }
+
     }
 }
