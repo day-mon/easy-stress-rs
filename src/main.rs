@@ -101,8 +101,8 @@ fn main() -> InquireResult<()> {
             true => CustomType::<u16>::new("How long would you like the stress test to last? (in minutes)")
                 .with_default(1)
                 .with_validator(prompt::duration_validator)
-                .with_help_message("Type in a number between 1 -> 65536")
-                .with_error_message("This number is too big. Number has to be in the range 1 -> 65536.")
+                .with_help_message("Type in a number between 1 -> 65535")
+                .with_error_message("This number is too big. Number has to be in the range 1 -> 65535.")
                 .prompt()
                 .ok(),
             false => None
