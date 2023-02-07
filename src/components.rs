@@ -4,7 +4,7 @@ use ocl::{Device, DeviceType, Platform};
 use ocl::core::DeviceInfo;
 use sysinfo::{CpuExt, System, SystemExt};
 
-pub fn get_system_gpus(platform: Option<Platform>) -> Option<Vec<Device>> {
+pub fn get_system_gpus(platform: &Option<Platform>) -> Option<Vec<Device>> {
 
     match platform {
         Some(plat) => {
@@ -117,7 +117,7 @@ impl Display for GreetingValues {
 
 
 impl GreetingValues {
-    pub fn new(system: &System, platform: Option<Platform>) -> Self {
+    pub fn new(system: &System, platform: &Option<Platform>) -> Self {
         let host_name = system.host_name().unwrap_or("User".to_string());
         let os_long = system.long_os_version().unwrap_or_else(|| "N/A".to_string());
         let kernel_version = system.kernel_version();

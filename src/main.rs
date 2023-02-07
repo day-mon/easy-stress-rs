@@ -54,8 +54,9 @@ fn main() -> InquireResult<()> {
     let mut gpu_ctx: Option<OpenCLContext> = None;
     let gpu_device: Option<Device> = None;
 
-    let system_information = GreetingValues::new(&sys, platform);
+    let system_information = GreetingValues::new(&sys, &platform);
     println!("{system_information}");
+
 
     loop {
         let main_question= Select::new("What would you like to stress?", get_stressed_components(&system_information))
@@ -112,6 +113,7 @@ fn main() -> InquireResult<()> {
 
         let duration = duration.map(|dur| Duration::from_secs(dur as u64 * 60));
 
+
         if main_question == "CPU"
         {
             let cpus = cpu_questions
@@ -125,7 +127,8 @@ fn main() -> InquireResult<()> {
         {
             let gpu_text = gpu_question.expect("GPU Option was chosen and no gpu was given. We gotta go bye bye.");
             let device = gpu_device.unwrap_or_else(|| Device::from(*{
-                let gpu_options = get_gpu_options().expect("Couldn't get GPU options. Something went wrong.");
+                let gpu_options = get_gpu_options(&platform)
+                    .expect("Couldn't get GPU options. Something went wrong.");
 
                 gpu_options
                     .into_iter()
@@ -235,9 +238,13 @@ pub fn get_opencl_program(
     }
 }
 
-fn get_gpu_options() -> ocl::Result<Vec<Device>> {
-    let platform = Platform::default();
-    Device::list(platform, Some(DeviceType::GPU))
+fn get_gpu_options(platform: &Option<Platform>) -> Option<Vec<Device>> {
+    if let Some(platform) = platform {
+        Device::list(platform, Some(DeviceType::GPU))
+            .ok()
+    } else {
+        None
+    }
 }
 
 fn do_gpu_work(

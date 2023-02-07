@@ -1,6 +1,6 @@
 [package]
 name = "easy-stress-rs"
-version = "2.0.1"
+version = "2.0.2"
 authors = ["Damon Montague Jr"]
 repository = "https://github.com/day-mon/easy-stress-rs"
 edition = "2021"
