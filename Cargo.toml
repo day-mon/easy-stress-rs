@@ -4,9 +4,13 @@ version = "2.0.3"
 description = "A crossplatform, device agnostic, easy to use GPU and CPU stress test cli tool."
 authors = ["Damon Montague Jr <damon@montague.im>"]
 repository = "https://github.com/day-mon/easy-stress-rs"
-license = "https://github.com/day-mon/easy-stress-rs"
+homepage = "https://github.com/day-mon/easy-stress-rs"
+license = "Unlicense"
 edition = "2021"
 readme = "README.md"
+exclude = [
+    "notes.md",
+]
 
 [dependencies]
 inquire = "0.5.3"

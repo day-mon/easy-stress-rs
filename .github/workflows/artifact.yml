@@ -41,7 +41,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: Linux x64
-          path: target/release/easy-stress-rs
+          path: target/release/ezstress
   windows:
     name: Artifact Windows (x64)
     runs-on: windows-2019
@@ -66,7 +66,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: Windows x64
-          path: target/release/easy-stress-rs.exe
+          path: target/release/ezstress.exe
   macos:
     name: Artifact macOS (Universal)
     runs-on: macos-latest
@@ -92,9 +92,9 @@ jobs:
           cargo build -r --target=aarch64-apple-darwin
       - name: Combine Universal Darwin
         run:
-          lipo -create -output universal-easy-stress-rs target/**/release/easy-stress-rs
+          lipo -create -output universal-ezstress target/**/release/ezstress
       - name: Upload Artifact
         uses: actions/upload-artifact@v3
         with:
           name: macOS universal
-          path: universal-easy-stress-rs
+          path: universal-ezstress
