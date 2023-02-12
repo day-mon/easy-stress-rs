@@ -1,5 +1,4 @@
 use std::fmt::{Display, Formatter};
-
 use ocl::{Buffer, Context, Device, Kernel, Platform, Program, Queue};
 use ocl::core::{DeviceInfo, DeviceInfoResult};
 
@@ -327,6 +326,5 @@ impl OpenCLProgram {
             },
             None => Err("No default queue".to_string()),
         }
-
     }
 }

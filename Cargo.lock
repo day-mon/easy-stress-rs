@@ -156,16 +156,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c9b0705efd4599c15a38151f4721f7bc388306f61084d3bfd50bd07fbca5cb60"
 
 [[package]]
-name = "easy-stress-rs"
-version = "2.0.2"
-dependencies = [
- "colored",
- "inquire",
- "ocl",
- "sysinfo",
-]
-
-[[package]]
 name = "either"
 version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -178,6 +168,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be4551092f4d519593039259a9ed8daedf0da12e5109c5280338073eaeb81180"
 dependencies = [
  "num-traits 0.1.43",
+]
+
+[[package]]
+name = "ezstress"
+version = "2.0.2"
+dependencies = [
+ "colored",
+ "inquire",
+ "ocl",
+ "sysinfo",
 ]
 
 [[package]]

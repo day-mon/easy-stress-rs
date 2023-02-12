@@ -214,7 +214,7 @@ pub fn get_opencl_program(
     match method {
         Stressor::SquareRoot => {
             // yeah, lets spam sqrt 952 on gpu
-            let sqrt_vector = vec![952_f32; OPENCL_VECTOR_SIZE];
+            let sqrt_vector = vec![1_000_000.94_f32; OPENCL_VECTOR_SIZE];
             let result_vector = vec![0_f32; OPENCL_VECTOR_SIZE];
             OpenCLProgram::new(ctx, OPENCL_SQUARE_ROOT, "sqrt", vec![sqrt_vector, result_vector])
         }
@@ -224,8 +224,8 @@ pub fn get_opencl_program(
             OpenCLProgram::new(ctx, OPENCL_FLOAT_ADD, "float_add", vec![f_add_vector, result_vector])
         }
         Stressor::MatrixMultiplication => {
-            let matrix_a = vec![201.139_13_f32; OPENCL_VECTOR_SIZE];
-            let matrix_b = vec![952.139_1_f32; OPENCL_VECTOR_SIZE];
+            let matrix_a = vec![201_231_231.231139_13_f32; OPENCL_VECTOR_SIZE];
+            let matrix_b = vec![231_231.23_f32; OPENCL_VECTOR_SIZE];
             let result_vector = vec![0_f32; OPENCL_VECTOR_SIZE];
             OpenCLProgram::new(ctx, OPENCL_MATRIX_MULTIPLICATION, "matrix_mult", vec![matrix_a, matrix_b, result_vector])
         }
@@ -239,12 +239,10 @@ pub fn get_opencl_program(
 }
 
 fn get_gpu_options(platform: &Option<Platform>) -> Option<Vec<Device>> {
-    if let Some(platform) = platform {
-        Device::list(platform, Some(DeviceType::GPU))
-            .ok()
-    } else {
-        None
-    }
+    platform
+        .map(|plat| Device::list(plat, Some(DeviceType::GPU)).ok())
+        .flatten()
+
 }
 
 fn do_gpu_work(
@@ -267,6 +265,7 @@ fn do_gpu_work(
             }
         }
         let mut iter_failed = false;
+
 
         program.run().unwrap_or_else(|_| {
             println!("Error occurred while attempting to enqueue the kernel. If this continues to happen just Control+C");
